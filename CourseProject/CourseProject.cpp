@@ -1,255 +1,195 @@
-// CourseProject.cpp : Defines the entry point for the application.
-//
-
 #include "stdafx.h"
-#include "CourseProject.h"
-#include "iostream"
-#define MAX_LOADSTRING 100
-#define BUTTON_ID      1001
+#include <Windows.h>
+#include <tchar.h>
+#include <strsafe.h>
+#include "Resource.h"
+#include <commctrl.h>
+#include <wincrypt.h>
+#include <fstream>
+#include <shlobj.h>
 
-// Global Variables:
-HINSTANCE hInst;                                // current instance
-WCHAR szTitle[MAX_LOADSTRING];                  // The title bar text
-WCHAR szWindowClass[MAX_LOADSTRING];            // the main window class name
+using namespace std;
 
-// Forward declarations of functions included in this code module:
-ATOM                MyRegisterClass(HINSTANCE hInstance);
-BOOL                InitInstance(HINSTANCE, int);
-LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
-INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
-
-LPCWSTR TextArray[] = {
-	L"Hello World"
+typedef struct File
+{
+	char name[255];
+	bool isFolder;
+	char location[600];
+	char hash[32];
 };
 
+File filelist;
+LV_ITEM LvItem;
+LVCOLUMN LvCol;
+char buffer[500];
 
-int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
-                     _In_opt_ HINSTANCE hPrevInstance,
-                     _In_ LPWSTR    lpCmdLine,
-                     _In_ int       nCmdShow)
-{
-    UNREFERENCED_PARAMETER(hPrevInstance);
-    UNREFERENCED_PARAMETER(lpCmdLine);
+LPWSTR CharToLPWSTR(LPCSTR char_string);
 
-    // TODO: Place code here.
+HWND hwndList;
+CHAR directory[MAX_PATH];
+HRESULT result = SHGetFolderPath(NULL, CSIDL_DESKTOPDIRECTORY, NULL, SHGFP_TYPE_CURRENT, CharToLPWSTR(directory));
 
-    // Initialize global strings
-    LoadStringW(hInstance, IDS_APP_TITLE, szTitle, MAX_LOADSTRING);
-    LoadStringW(hInstance, IDC_COURSEPROJECT, szWindowClass, MAX_LOADSTRING);
-    MyRegisterClass(hInstance);
+INT_PTR CALLBACK Processor(HWND hDlg, UINT message,
+	WPARAM wParam, LPARAM lParam);
 
-    // Perform application initialization:
-    if (!InitInstance (hInstance, nCmdShow))
+LPWSTR CharToLPWSTR(LPCSTR char_string)
     {
-        return FALSE;
+	LPWSTR res;
+	DWORD res_len = MultiByteToWideChar(1251, 0, char_string, -1, NULL, 0);
+	res = (LPWSTR)GlobalAlloc(GPTR, (res_len + 1) * sizeof(WCHAR));
+	MultiByteToWideChar(1251, 0, char_string, -1, res, res_len);
+	return res;
     }
 
-    HACCEL hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_COURSEPROJECT));
+void MD5Hash(BYTE hash[], int sz, char sec[]) {
+	HCRYPTPROV hProv = 0, hHash = 0;
+	BYTE rgbHash[16];
+	DWORD cbHash = 0;
+	char file[MAX_PATH], dig[] = "0123456789abcdef";
+	int l = 0;
 
-    MSG msg;
+	CryptAcquireContext(&hProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT);
+	CryptCreateHash(hProv, CALG_MD5, 0, 0, &hHash);
+	CryptHashData(hHash, hash, sz, 0);
+	cbHash = 16;
+	CryptGetHashParam(hHash, HP_HASHVAL, rgbHash, &cbHash, 0);
 
-    // Main message loop:
-    while (GetMessage(&msg, nullptr, 0, 0))
-    {
-        if (!TranslateAccelerator(msg.hwnd, hAccelTable, &msg))
-        {
-            TranslateMessage(&msg);
-            DispatchMessage(&msg);
+	for (DWORD i = 0; i<cbHash; i++) {
+		sec[l] = dig[rgbHash[i] >> 4];
+		l++;
+		sec[l] = dig[rgbHash[i] & 0xf];
+		l++;
         }
+	for (l = 32; l<strlen(sec); l++)sec[l] = 0;
+
+	CryptDestroyHash(hHash);
+	CryptReleaseContext(hProv, 0);
     }
 
-    return (int) msg.wParam;
+LPWSTR MessageBoxFileHashSum(char buffer[]) {
+	char file[600];
+	strcpy(file, directory);
+	strcat(file, buffer);
+	ifstream read(file, ios::binary);
+	read.seekg(0, ios::end);
+	int l = read.tellg();
+	read.seekg(0, ios::beg);
+	char * buf = 0;
+	if ((buf = (char*)malloc(l)) == NULL) {
+		MessageBox(0, CharToLPWSTR("Directorys cannot be summed"), 0, 0);
+		return 0;
+}
+	read.read(buf, l);
+	if (read.fail()) {
+		free(buf);
+		MessageBox(NULL, CharToLPWSTR("Error Opening File"), CharToLPWSTR("andrewjohnsson"), MB_OK);
+		return 0;
+	}
+	read.close();
+
+	char hash[32];
+	MD5Hash((BYTE*)buf, l, hash);
+	free(buf);
+	return CharToLPWSTR(hash);
+	//MessageBox(NULL, CharToLPWSTR(hash), CharToLPWSTR("File Checksum:"), MB_OK);
 }
 
+void UpdateList() {
+	char path[500];
+	int i = 0;
+	strcpy(path, directory);
+	strcat(path, "*.*");
 
-
-//
-//  FUNCTION: MyRegisterClass()
-//
-//  PURPOSE: Registers the window class.
-//
-ATOM MyRegisterClass(HINSTANCE hInstance)
+	WIN32_FIND_DATA data;
+	HANDLE hFile = FindFirstFileA(path, (LPWIN32_FIND_DATAA)&data);
+	SendMessage(hwndList, LB_RESETCONTENT, 0, 0);
+	while (FindNextFile(hFile, &data) != 0)
 {
-    WNDCLASSEXW wcex;
-
-    wcex.cbSize = sizeof(WNDCLASSEX);
-
-    wcex.style          = CS_HREDRAW | CS_VREDRAW;
-    wcex.lpfnWndProc    = WndProc;
-    wcex.cbClsExtra     = 0;
-    wcex.cbWndExtra     = 0;
-    wcex.hInstance      = hInstance;
-    wcex.hIcon          = LoadIcon(hInstance, MAKEINTRESOURCE(IDI_COURSEPROJECT));
-    wcex.hCursor        = LoadCursor(nullptr, IDC_ARROW);
-    wcex.hbrBackground  = (HBRUSH)(COLOR_WINDOW+1);
-    wcex.lpszMenuName   = MAKEINTRESOURCEW(IDC_COURSEPROJECT);
-    wcex.lpszClassName  = szWindowClass;
-    wcex.hIconSm        = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
-
-    return RegisterClassExW(&wcex);
+		LvItem.iItem = (WPARAM)-1;
+		LvItem.iSubItem = 0;
+		LvItem.pszText = data.cFileName;
+		SendMessage(hwndList, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
+		LvItem.iItem = i;
+		LvItem.pszText = MessageBoxFileHashSum(buffer);
+		LvItem.iSubItem = 2;
+		SendMessage(hwndList, LVM_SETITEM, 0, (LPARAM)&LvItem);
+	}
+	FindClose(hFile);
 }
 
-//
-//   FUNCTION: InitInstance(HINSTANCE, int)
-//
-//   PURPOSE: Saves instance handle and creates main window
-//
-//   COMMENTS:
-//
-//        In this function, we save the instance handle in a global variable and
-//        create and display the main program window.
-//
-BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
+int CALLBACK _tWinMain(
+	_In_  HINSTANCE hInstance,
+	_In_  HINSTANCE hPrevInstance,
+	_In_  LPTSTR lpCmdLine,
+	_In_  int nCmdShow)
 {
-   hInst = hInstance; // Store instance handle in our global variable
+	::DialogBox(hInstance, MAKEINTRESOURCE(IDD_MAIN), NULL, Processor);
+	return 0;
+}
 
-   HWND hWnd = CreateWindowW(szWindowClass, szTitle, WS_OVERLAPPEDWINDOW,
-      CW_USEDEFAULT, 0, CW_USEDEFAULT, 0, nullptr, nullptr, hInstance, nullptr);
+INT_PTR CALLBACK Processor(HWND hDlg, UINT message,
+	WPARAM wParam, LPARAM lParam)
+{
+	switch (message)
+	{
+	case WM_INITDIALOG:
+{
+		hwndList = GetDlgItem(hDlg, IDC_LIST_FILES);
 
-   if (!hWnd)
+		LvItem.mask = LVIF_TEXT;
+		LvItem.cchTextMax = 256;
+		LvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
+		LvCol.cx = 0x28;
+		LvCol.pszText = CharToLPWSTR("Name");
+		LvCol.cx = 0x70;
+		SendMessage(hwndList, LVM_INSERTCOLUMN, 0, (LPARAM)&LvCol);
+		LvCol.pszText = CharToLPWSTR("Location");
+		SendMessage(hwndList, LVM_INSERTCOLUMN, 1, (LPARAM)&LvCol);
+		LvCol.pszText = CharToLPWSTR("Hashsum");
+		SendMessage(hwndList, LVM_INSERTCOLUMN, 2, (LPARAM)&LvCol);
+		UpdateList();
+		/*
+		for (int i = 0; i < ARRAYSIZE(fileList); i++)
+		{
+			LvItem.iItem = i;
+			LvItem.iSubItem = 0;
+			LvItem.pszText = CharToLPWSTR(fileList[i].name);
+			SendMessage(hwndList, LVM_INSERTITEM, 0, (LPARAM)&LvItem);
+		}
+
+		for (int i = 0; i < ARRAYSIZE(fileList); i++)
    {
-      return FALSE;
+			LvItem.iItem = i;
+			LvItem.pszText = CharToLPWSTR(fileList[i].location);
+			LvItem.iSubItem = 1;
+			SendMessage(hwndList, LVM_SETITEM, 0, (LPARAM)&LvItem);
    }
 
-   ShowWindow(hWnd, nCmdShow);
-   UpdateWindow(hWnd);
+		for (int i = 0; i < ARRAYSIZE(fileList); i++)
+		{
+			LvItem.iItem = i;
+			LvItem.pszText = CharToLPWSTR(fileList[i].hash);
+			LvItem.iSubItem = 2;
+			SendMessage(hwndList, LVM_SETITEM, 0, (LPARAM)&LvItem);
+		}*/
 
+		SetFocus(hwndList);
    return TRUE;
 }
 
-//
-//  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
-//
-//  PURPOSE:  Processes messages for the main window.
-//
-//  WM_COMMAND  - process the application menu
-//  WM_PAINT    - Paint the main window
-//  WM_DESTROY  - post a quit message and return
-//
-//
-
-HWND hBtn
-, hLabel
-, hListbox
-, hTextBox
-, hButton;
-
-void InitializeComponent(HWND hWnd) {
-	HINSTANCE hInstance = GetModuleHandle(NULL);
-
-	// Adding a ListBox.
-	hListbox = CreateWindowExW(WS_EX_CLIENTEDGE
-		, L"LISTBOX", NULL
-		, WS_CHILD | WS_VISIBLE | ES_AUTOVSCROLL
-		, 7, 35, 300, 200
-		, hWnd, NULL, hInstance, NULL);
-	hButton = CreateWindow(L"button", L"Sync",
-		WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
-		100, 10,
-		150, 30,
-		hWnd, (HMENU)BUTTON_ID,
-		hInst, NULL);
-	SetWindowTextW(hTextBox, L"Input text here...");
-}
-
-
-
-LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
-{
-	vector<WCHAR*> files = get_all_files_names_within_folder("C:\\Ruby22-x64\\lib");
-	int count = 0;
-    switch (message)
-    {
-	case WM_CREATE:
-			InitializeComponent(hWnd);
-			SendMessage(hListbox, LB_ADDSTRING, 0, (LPARAM)L"name");
-			SendMessage(hListbox, LB_ADDSTRING, 0, (LPARAM)L"extension");
-			SendMessage(hListbox, LB_ADDSTRING, 0, (LPARAM)L"date");
-			SendMessage(hListbox, LB_ADDSTRING, 0, (LPARAM)L"size");
-		break;
     case WM_COMMAND:
+		switch (LOWORD(wParam))
         {
-            int wmId = LOWORD(wParam);
-            // Parse the menu selections:
-            switch (wmId)
+			case IDC_BUTTON_CONNECT:
+				MessageBox(0, CharToLPWSTR("Connecting to"), CharToLPWSTR("Info"), MB_OK);
+			case IDC_LIST_FILES:
             {
-
-			case BUTTON_ID:
-				MessageBox(NULL, L"Works", NULL, NULL);
-				SendMessage(hListbox, LB_RESETCONTENT, 0, 0);
-
-				break;
-            case IDM_ABOUT:
-				
-				
-				for (int i = 0; i < files.size();i++) {
-					count++;
-				}
-				wchar_t buffer[256];
-				wsprintfW(buffer, L"%d",count);
-				MessageBoxW(nullptr, buffer, buffer, MB_OK);
-				//MessageBox(NULL, L"I am just trying my wedding dress", NULL, NULL);
-				if (isDirectoryExists("C:\\Users")) {
-					MessageBox(NULL, L"I am just trying my wedding dress", NULL, NULL);
-				}
-                DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-                break;
-            case IDM_EXIT:
-                DestroyWindow(hWnd);
-                break;
-            default:
-                return DefWindowProc(hWnd, message, wParam, lParam);
-            }
-        }
-        break;
-    case WM_PAINT:
+				switch (HIWORD(wParam))
         {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hWnd, &ps);
-			LPCWSTR d = L"sd";
-			LPCWSTR f = L"f";
-			std::wstring df = std::wstring(d) + f;
-			LPCWSTR dfc = df.c_str(); // if you are really need this
-			LPCWSTR myFiles = L"";
-			for (int i = 0; i < (sizeof(TextArray) / sizeof(*TextArray));i++) {
-
-			}
-			TextOut(hdc,
-				// Location of the text
-				10,
-				10,
-				// Text to print
-				TextArray[0],
-				// Size of the text, my function gets this for us
-				GetTextSize(TextArray[0]));
-            EndPaint(hWnd, &ps);
-        }
-        break;
-    case WM_DESTROY:
-        PostQuitMessage(0);
-        break;
-    default:
-        return DefWindowProc(hWnd, message, wParam, lParam);
     }
-    return 0;
 }
-
-// Message handler for about box.
-INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
-{
-    UNREFERENCED_PARAMETER(lParam);
-    switch (message)
-    {
-    case WM_INITDIALOG:
-        return (INT_PTR)TRUE;
-
-    case WM_COMMAND:
-        if (LOWORD(wParam) == IDOK || LOWORD(wParam) == IDCANCEL)
-        {
-            EndDialog(hDlg, LOWORD(wParam));
-            return (INT_PTR)TRUE;
+			return TRUE;
         }
-        break;
     }
-    return (INT_PTR)FALSE;
+	return FALSE;
 }
