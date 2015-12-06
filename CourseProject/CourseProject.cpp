@@ -3,8 +3,9 @@
 
 #include "stdafx.h"
 #include "CourseProject.h"
-
+#include "iostream"
 #define MAX_LOADSTRING 100
+#define BUTTON_ID      1001
 
 // Global Variables:
 HINSTANCE hInst;                                // current instance
@@ -16,6 +17,11 @@ ATOM                MyRegisterClass(HINSTANCE hInstance);
 BOOL                InitInstance(HINSTANCE, int);
 LRESULT CALLBACK    WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK    About(HWND, UINT, WPARAM, LPARAM);
+
+LPCWSTR TextArray[] = {
+	L"Hello World"
+};
+
 
 int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
                      _In_opt_ HINSTANCE hPrevInstance,
@@ -121,22 +127,72 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 //  WM_DESTROY  - post a quit message and return
 //
 //
+
+HWND hBtn
+, hLabel
+, hListbox
+, hTextBox
+, hButton;
+
+void InitializeComponent(HWND hWnd) {
+	HINSTANCE hInstance = GetModuleHandle(NULL);
+
+	// Adding a ListBox.
+	hListbox = CreateWindowExW(WS_EX_CLIENTEDGE
+		, L"LISTBOX", NULL
+		, WS_CHILD | WS_VISIBLE | ES_AUTOVSCROLL
+		, 7, 35, 300, 200
+		, hWnd, NULL, hInstance, NULL);
+	hButton = CreateWindow(L"button", L"Sync",
+		WS_CHILD | WS_VISIBLE | BS_DEFPUSHBUTTON,
+		100, 10,
+		150, 30,
+		hWnd, (HMENU)BUTTON_ID,
+		hInst, NULL);
+	SetWindowTextW(hTextBox, L"Input text here...");
+}
+
+
+
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+	vector<WCHAR*> files = get_all_files_names_within_folder("C:\\Ruby22-x64\\lib");
+	int count = 0;
     switch (message)
     {
+	case WM_CREATE:
+			InitializeComponent(hWnd);
+			SendMessage(hListbox, LB_ADDSTRING, 0, (LPARAM)L"name");
+			SendMessage(hListbox, LB_ADDSTRING, 0, (LPARAM)L"extension");
+			SendMessage(hListbox, LB_ADDSTRING, 0, (LPARAM)L"date");
+			SendMessage(hListbox, LB_ADDSTRING, 0, (LPARAM)L"size");
+		break;
     case WM_COMMAND:
         {
             int wmId = LOWORD(wParam);
             // Parse the menu selections:
             switch (wmId)
             {
+
+			case BUTTON_ID:
+				MessageBox(NULL, L"Works", NULL, NULL);
+				SendMessage(hListbox, LB_RESETCONTENT, 0, 0);
+
+				break;
             case IDM_ABOUT:
+				
+				
+				for (int i = 0; i < files.size();i++) {
+					count++;
+				}
+				wchar_t buffer[256];
+				wsprintfW(buffer, L"%d",count);
+				MessageBoxW(nullptr, buffer, buffer, MB_OK);
+				//MessageBox(NULL, L"I am just trying my wedding dress", NULL, NULL);
+				if (isDirectoryExists("C:\\Users")) {
+					MessageBox(NULL, L"I am just trying my wedding dress", NULL, NULL);
+				}
                 DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
-				int *i;
-				*i = 6;
-				i++;
-				free(i);
                 break;
             case IDM_EXIT:
                 DestroyWindow(hWnd);
@@ -150,7 +206,22 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
         {
             PAINTSTRUCT ps;
             HDC hdc = BeginPaint(hWnd, &ps);
-            // TODO: Add any drawing code that uses hdc here...
+			LPCWSTR d = L"sd";
+			LPCWSTR f = L"f";
+			std::wstring df = std::wstring(d) + f;
+			LPCWSTR dfc = df.c_str(); // if you are really need this
+			LPCWSTR myFiles = L"";
+			for (int i = 0; i < (sizeof(TextArray) / sizeof(*TextArray));i++) {
+
+			}
+			TextOut(hdc,
+				// Location of the text
+				10,
+				10,
+				// Text to print
+				TextArray[0],
+				// Size of the text, my function gets this for us
+				GetTextSize(TextArray[0]));
             EndPaint(hWnd, &ps);
         }
         break;
