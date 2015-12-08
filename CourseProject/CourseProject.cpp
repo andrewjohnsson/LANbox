@@ -6,18 +6,16 @@
 #include <direct.h>
 #include <fileapi.h>
 #include <commctrl.h>
-#include <wincrypt.h>
 #include <fstream>
 
 #define MAX_LOADSTRING 100
-#define MD5LEN  32
-
-using namespace std;
 
 // Global Variables:
 HINSTANCE hInst;																			// current instance
 HWND mainWindow;
 HWND loginWindow;
+HWND usernameField;
+HWND passwordField;
 HWND arrangeBox;
 LV_ITEM LvItem;
 LVCOLUMN LvCol;
@@ -69,8 +67,6 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 
 	return (int)msg.wParam;
 }
-
-
 
 //
 //  FUNCTION: MyRegisterClass()
@@ -194,10 +190,10 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		(GetSystemMetrics(SM_CXSCREEN)-330)/2, (GetSystemMetrics(SM_CYSCREEN) - 185) / 2, 
 		330, 185, NULL, NULL, hInstance, NULL);
 
-	HWND usernameField = CreateWindow(WC_EDIT, L"Username", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+	usernameField = CreateWindow(WC_EDIT, L"Username", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
 		5, 10, 305, 20, loginWindow, (HMENU)IDC_START_USERNAME, hInstance, NULL);
 
-	HWND passwordField = CreateWindow(WC_EDIT , L"password", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
+	passwordField = CreateWindow(WC_EDIT , L"password", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
 		5, 35, 305, 20, loginWindow, (HMENU)IDC_START_PASSWORD, hInstance, NULL);
 	
 	HWND serverAddress = CreateWindow(WC_EDIT, L"127.0.0.1", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
@@ -280,7 +276,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		switch (wmId)
 		{
 		case IDC_START_SIGNIN:
-			setDirPath();																		//TO-DO: Credentials check
+			TCHAR username[32];
+			TCHAR password[32];
+			GetWindowText(usernameField, username, 32);
+			GetWindowText(passwordField, password, 32);
+			//TO-DO: Credentials check
+			setDirPath();																		
 			UpdateList();
 			ShowWindow(loginWindow, SW_HIDE);
 			ShowWindow(mainWindow, SW_SHOW);
