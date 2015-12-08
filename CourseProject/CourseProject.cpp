@@ -3,6 +3,7 @@
 
 #include "stdafx.h"
 #include "CourseProject.h"
+#include <direct.h>
 #include <commctrl.h>
 #include <wincrypt.h>
 #include <fstream>
@@ -14,10 +15,12 @@ using namespace std;
 
 // Global Variables:
 HINSTANCE hInst;								// current instance
+HWND hWnd;
 LV_ITEM LvItem;
 LVCOLUMN LvCol;
 HWND fileListView;
-CHAR directory[500] = "C:\\Users\\andro\\Source\\Repos\\LANbox\\CourseProject\\";
+CHAR directory[MAX_PATH] = "";
+
 TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
 TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
 
@@ -35,7 +38,6 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
 
-	// TODO: Place code here.
 	MSG msg;
 	HACCEL hAccelTable;
 
@@ -130,6 +132,35 @@ void UpdateList() {
 	FindClose(hFile);
 }
 
+void setDirPath() {
+	strcpy(directory, getenv("USERPROFILE"));
+	strcat(directory,"\\Documents\\LanBox\\");
+
+	if (_chdir(directory))
+	{
+		switch (errno)
+		{
+		case ENOENT:
+			if (_mkdir(directory) == 0)
+			{
+				return;
+			}
+			else
+			{
+				MessageBox(hWnd, L"Can't make initial dir! Try to launch with administrator rights.", L"Error", NULL);
+				exit(NULL);
+			}
+			break;
+		default:
+			return;
+		}
+	}
+	else
+	{
+		return;
+	}
+}
+
 //
 //   FUNCTION: InitInstance(HINSTANCE, int)
 //
@@ -142,8 +173,6 @@ void UpdateList() {
 //
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-	HWND hWnd;
-
 	hInst = hInstance; // Store instance handle in our global variable
 
 	hWnd = CreateWindow(szWindowClass, szTitle, WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_DLGFRAME,
@@ -171,7 +200,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	lvHashCol.pszText = L"Hashsum";
 	lvHashCol.cx = 0x100;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 2, (LPARAM)&lvHashCol);
-
+	
+	setDirPath();
 	UpdateList();
 
 	if (!hWnd)
