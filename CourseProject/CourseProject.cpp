@@ -15,7 +15,8 @@ using namespace std;
 
 // Global Variables:
 HINSTANCE hInst;								// current instance
-HWND hWnd;
+HWND mainWindow;
+HWND loginWindow;
 LV_ITEM LvItem;
 LVCOLUMN LvCol;
 HWND fileListView;
@@ -87,7 +88,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hInstance = hInstance;
 	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDC_COURSEPROJECT));
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW);
+	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW+2);
 	wcex.lpszMenuName = MAKEINTRESOURCE(IDC_COURSEPROJECT);
 	wcex.lpszClassName = szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
@@ -147,7 +148,7 @@ void setDirPath() {
 			}
 			else
 			{
-				MessageBox(hWnd, L"Can't make initial dir! Try to launch with administrator rights.", L"Error", NULL);
+				MessageBox(NULL, L"Can't make initial dir! Try to launch with administrator rights.", L"Error", NULL);
 				exit(NULL);
 			}
 			break;
@@ -175,15 +176,28 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	hInst = hInstance; // Store instance handle in our global variable
 
-	hWnd = CreateWindow(szWindowClass, szTitle, WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_DLGFRAME,
-		660, 360, 640, 360, NULL, NULL, hInstance, NULL);
+	loginWindow = CreateWindowEx(WS_EX_CLIENTEDGE, szWindowClass, L"Welcome to LanBox", WS_DLGFRAME | WS_SYSMENU | WS_MINIMIZEBOX,
+		(GetSystemMetrics(SM_CXSCREEN)-330)/2, (GetSystemMetrics(SM_CYSCREEN) - 160) / 2, 
+		330, 160, NULL, NULL,	hInstance, NULL);
 
+	HWND usernameField = CreateWindow(WC_EDIT, L"Username", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+		5, 10, 300, 20, loginWindow, (HMENU)IDC_START_USERNAME, hInstance, NULL);
+
+	HWND passwordField = CreateWindow(WC_EDIT , L"password", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
+		5, 35, 300, 20, loginWindow, (HMENU)IDC_START_PASSWORD, hInstance, NULL);
+	
+	HWND loginBtn = CreateWindow(WC_BUTTON, L"Sign In", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+		125, 65, 65, 25, loginWindow, (HMENU)IDC_START_SIGNIN, hInstance, NULL);
+
+	mainWindow = CreateWindow(szWindowClass, szTitle, WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_DLGFRAME,
+		(GetSystemMetrics(SM_CXSCREEN) - 640) / 2, (GetSystemMetrics(SM_CYSCREEN) - 360) / 2, 
+		640, 360, NULL, NULL, hInstance, NULL);
 
 	HWND syncBtn = CreateWindow(WC_BUTTON, L"Sync", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-		510, 271, 110, 25, hWnd, (HMENU)200, hInstance, NULL);
+		510, 271, 110, 25, mainWindow, NULL, hInstance, NULL);
 
 	fileListView = CreateWindow(WC_LISTVIEW, L"", WS_CHILD | LVS_REPORT | LVS_EDITLABELS | WS_VISIBLE,
-		5, 5, 500, 290, hWnd, (HMENU)201, hInstance, NULL);
+		5, 5, 500, 290, mainWindow, NULL, hInstance, NULL);
 
 	LvItem.mask = LVIF_TEXT;
 	LvItem.cchTextMax = 256;
@@ -200,17 +214,14 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	lvHashCol.pszText = L"Hashsum";
 	lvHashCol.cx = 0x100;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 2, (LPARAM)&lvHashCol);
-	
-	setDirPath();
-	UpdateList();
 
-	if (!hWnd)
+	if (!loginWindow)
 	{
 		return FALSE;
 	}
 
-	ShowWindow(hWnd, nCmdShow);
-	UpdateWindow(hWnd);
+	ShowWindow(loginWindow, nCmdShow);
+	UpdateWindow(loginWindow);
 
 	return TRUE;
 }
@@ -239,6 +250,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		// Parse the menu selections:
 		switch (wmId)
 		{
+		case IDC_START_SIGNIN:
+			setDirPath();															//TO-DO: Credentials check
+			UpdateList();
+			ShowWindow(loginWindow, SW_HIDE);
+			ShowWindow(mainWindow, SW_SHOW);
+			UpdateWindow(mainWindow);
+			break;
 		case IDM_ABOUT:
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
 			break;
