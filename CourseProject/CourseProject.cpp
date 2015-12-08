@@ -4,7 +4,6 @@
 #include "stdafx.h"
 #include "CourseProject.h"
 #include <direct.h>
-#include <fileapi.h>
 #include <commctrl.h>
 #include <fstream>
 
@@ -12,15 +11,10 @@
 
 // Global Variables:
 HINSTANCE hInst;																			// current instance
-HWND mainWindow;
-HWND loginWindow;
-HWND usernameField;
-HWND passwordField;
-HWND arrangeBox;
+HWND mainWindow, loginWindow, usernameField, passwordField, arrangeBox, fileListView;
 LV_ITEM LvItem;
 LVCOLUMN LvCol;
-HWND fileListView;
-CHAR directory[MAX_PATH] = "";
+CHAR directory[MAX_PATH];
 
 TCHAR szTitle[MAX_LOADSTRING];																// The title bar text
 TCHAR szWindowClass[MAX_LOADSTRING];														// the main window class name
@@ -48,10 +42,7 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	MyRegisterClass(hInstance);
 
 	// Perform application initialization:
-	if (!InitInstance(hInstance, nCmdShow))
-	{
-		return FALSE;
-	}
+	if (!InitInstance(hInstance, nCmdShow)) { return FALSE; }
 
 	hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_COURSEPROJECT));
 
@@ -96,14 +87,13 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 
 LPWSTR CharToLPWSTR(LPCSTR char_string)
 {
-	LPWSTR res;
 	DWORD res_len = MultiByteToWideChar(1251, 0, char_string, -1, NULL, 0);
-	res = (LPWSTR)GlobalAlloc(GPTR, (res_len + 1) * sizeof(WCHAR));
+	LPWSTR res = (LPWSTR)GlobalAlloc(GPTR, (res_len + 1) * sizeof(WCHAR));
 	MultiByteToWideChar(1251, 0, char_string, -1, res, res_len);
 	return res;
 }
 
-char* getHash(char* file){																	//TO-DO: write hash calculator
+char* getHash(char* file){														//TO-DO: write hash calculator
 	char* hash = "8dccad143277578943d380a89a954025";
 	return hash;
 }
@@ -121,12 +111,12 @@ void UpdateList() {
 	HANDLE hFile = FindFirstFileA(path, (LPWIN32_FIND_DATAA)&data);
 	while (FindNextFile(hFile, &data) != 0)
 	{
-		if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && 
+		/*if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&				//TO-DO: Fix checks bug
 			!(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && 
 			!(data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) &&
 			data.cFileName != L"." && 
 			data.cFileName != L"..") 
-		{
+		{*/
 			char* lol = getHash(NULL);
 			LvItem.iItem = 1;
 			LvItem.iSubItem = 0;
@@ -138,7 +128,7 @@ void UpdateList() {
 			LvItem.iSubItem = 2;
 			LvItem.pszText = CharToLPWSTR(lol);
 			SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
-		}
+		//}
 	}
 	FindClose(hFile);
 }
@@ -149,27 +139,15 @@ void setDirPath() {
 
 	if (_chdir(directory))
 	{
-		switch (errno)
-		{
-		case ENOENT:
-			if (_mkdir(directory) == 0)
-			{
-				return;
-			}
-			else
-			{
+		if (errno == ENOENT){ 
+			if (_mkdir(directory) == 0) { return; }
+			else {
 				MessageBox(NULL, L"Can't make initial dir! Try to launch with administrator rights.", L"Error", NULL);
 				exit(NULL);
-			}
-			break;
-		default:
-			return;
+			} 
 		}
 	}
-	else
-	{
-		return;
-	}
+	else { return; }
 }
 
 //
@@ -240,10 +218,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	lvHashCol.cx = 210;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 2, (LPARAM)&lvHashCol);
 
-	if (!loginWindow)
-	{
-		return FALSE;
-	}
+	if (!loginWindow) { return FALSE; }
 
 	ShowWindow(loginWindow, nCmdShow);
 	UpdateWindow(loginWindow);
@@ -276,8 +251,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		switch (wmId)
 		{
 		case IDC_START_SIGNIN:
-			TCHAR username[32];
-			TCHAR password[32];
+			TCHAR username[32],password[32];
 			GetWindowText(usernameField, username, 32);
 			GetWindowText(passwordField, password, 32);
 			//TO-DO: Credentials check
@@ -294,9 +268,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			switch (HIWORD(wParam))
 			{
 				case CBN_SELCHANGE:
-				int selRow;
-				selRow = SendMessage(arrangeBox, CB_GETCURSEL, 0, 0);
-				if (selRow == 0){
+				if (int selRow = SendMessage(arrangeBox, CB_GETCURSEL, 0, 0) == 0){
 					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_DETAILS, 0);
 				}
 				else {
