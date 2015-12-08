@@ -4,6 +4,7 @@
 #include "stdafx.h"
 #include "CourseProject.h"
 #include <direct.h>
+#include <fileapi.h>
 #include <commctrl.h>
 #include <wincrypt.h>
 #include <fstream>
@@ -14,16 +15,17 @@
 using namespace std;
 
 // Global Variables:
-HINSTANCE hInst;								// current instance
+HINSTANCE hInst;																			// current instance
 HWND mainWindow;
 HWND loginWindow;
+HWND arrangeBox;
 LV_ITEM LvItem;
 LVCOLUMN LvCol;
 HWND fileListView;
 CHAR directory[MAX_PATH] = "";
 
-TCHAR szTitle[MAX_LOADSTRING];					// The title bar text
-TCHAR szWindowClass[MAX_LOADSTRING];			// the main window class name
+TCHAR szTitle[MAX_LOADSTRING];																// The title bar text
+TCHAR szWindowClass[MAX_LOADSTRING];														// the main window class name
 
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
@@ -117,18 +119,30 @@ void UpdateList() {
 	strcpy(path, directory);
 	strcat(path, "*.*");
 
+	ListView_DeleteAllItems(fileListView);
+
 	WIN32_FIND_DATA data;
 	HANDLE hFile = FindFirstFileA(path, (LPWIN32_FIND_DATAA)&data);
 	while (FindNextFile(hFile, &data) != 0)
 	{
-		char* lol = getHash(NULL);
-		LvItem.iItem = 1;
-		LvItem.iSubItem = 0;
-		LvItem.pszText = data.cFileName;
-		SendMessage(fileListView, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
-		LvItem.iSubItem = 2;
-		LvItem.pszText = CharToLPWSTR(lol);
-		SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
+		if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && 
+			!(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && 
+			!(data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) &&
+			data.cFileName != L"." && 
+			data.cFileName != L"..") 
+		{
+			char* lol = getHash(NULL);
+			LvItem.iItem = 1;
+			LvItem.iSubItem = 0;
+			LvItem.pszText = data.cFileName;
+			SendMessage(fileListView, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
+			LvItem.iSubItem = 1;
+			LvItem.pszText = L"123";
+			SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
+			LvItem.iSubItem = 2;
+			LvItem.pszText = CharToLPWSTR(lol);
+			SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
+		}
 	}
 	FindClose(hFile);
 }
@@ -176,43 +190,58 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	hInst = hInstance; // Store instance handle in our global variable
 
-	loginWindow = CreateWindowEx(WS_EX_CLIENTEDGE, szWindowClass, L"Welcome to LanBox", WS_DLGFRAME | WS_SYSMENU | WS_MINIMIZEBOX,
-		(GetSystemMetrics(SM_CXSCREEN)-330)/2, (GetSystemMetrics(SM_CYSCREEN) - 160) / 2, 
-		330, 160, NULL, NULL,	hInstance, NULL);
+	loginWindow = CreateWindow(szWindowClass, L"Welcome to LanBox", WS_DLGFRAME | WS_SYSMENU | WS_MINIMIZEBOX,
+		(GetSystemMetrics(SM_CXSCREEN)-330)/2, (GetSystemMetrics(SM_CYSCREEN) - 185) / 2, 
+		330, 185, NULL, NULL, hInstance, NULL);
 
 	HWND usernameField = CreateWindow(WC_EDIT, L"Username", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-		5, 10, 300, 20, loginWindow, (HMENU)IDC_START_USERNAME, hInstance, NULL);
+		5, 10, 305, 20, loginWindow, (HMENU)IDC_START_USERNAME, hInstance, NULL);
 
 	HWND passwordField = CreateWindow(WC_EDIT , L"password", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
-		5, 35, 300, 20, loginWindow, (HMENU)IDC_START_PASSWORD, hInstance, NULL);
+		5, 35, 305, 20, loginWindow, (HMENU)IDC_START_PASSWORD, hInstance, NULL);
 	
-	HWND loginBtn = CreateWindow(WC_BUTTON, L"Sign In", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-		125, 65, 65, 25, loginWindow, (HMENU)IDC_START_SIGNIN, hInstance, NULL);
+	HWND serverAddress = CreateWindow(WC_EDIT, L"127.0.0.1", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+		5, 60, 305, 20, loginWindow, (HMENU)IDC_START_PASSWORD, hInstance, NULL);
 
-	mainWindow = CreateWindow(szWindowClass, szTitle, WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_DLGFRAME,
+	HWND loginBtn = CreateWindow(WC_BUTTON, L"Sign In", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+		125, 95, 65, 25, loginWindow, (HMENU)IDC_START_SIGNIN, hInstance, NULL);
+
+	mainWindow = CreateWindow(szWindowClass, L"LanBox - Connected", WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_DLGFRAME,
 		(GetSystemMetrics(SM_CXSCREEN) - 640) / 2, (GetSystemMetrics(SM_CYSCREEN) - 360) / 2, 
 		640, 360, NULL, NULL, hInstance, NULL);
 
+	arrangeBox = CreateWindow(WC_COMBOBOX, NULL,
+		CBS_DROPDOWN | CBS_HASSTRINGS | WS_CHILD | WS_OVERLAPPED | WS_VISIBLE,
+		510, 5, 110, 75, mainWindow, (HMENU)IDC_MAIN_COMBOBOX_ARRANGE, hInstance, NULL);
+
+	SendMessage(arrangeBox, CB_ADDSTRING, 0, (LPARAM)_T("List"));
+	SendMessage(arrangeBox, CB_ADDSTRING, 0, (LPARAM)_T("Icons"));
+	SendMessage(arrangeBox,CB_SETCURSEL, 0, 0);
+
 	HWND syncBtn = CreateWindow(WC_BUTTON, L"Sync", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-		510, 271, 110, 25, mainWindow, NULL, hInstance, NULL);
+		510, 270, 110, 25, mainWindow, (HMENU)IDC_MAIN_BTN_SYNC, hInstance, NULL);
+
+	HWND refreshBtn = CreateWindow(WC_BUTTON, L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+		510, 240, 110, 25, mainWindow, (HMENU)IDC_MAIN_BTN_REFRESH, hInstance, NULL);
 
 	fileListView = CreateWindow(WC_LISTVIEW, L"", WS_CHILD | LVS_REPORT | LVS_EDITLABELS | WS_VISIBLE,
-		5, 5, 500, 290, mainWindow, NULL, hInstance, NULL);
+		5, 5, 500, 290, mainWindow, (HMENU)IDC_MAIN_FILELIST, hInstance, NULL);
 
 	LvItem.mask = LVIF_TEXT;
 	LvItem.cchTextMax = 256;
 	
 	LvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
 	LvCol.pszText = L"Name";
-	LvCol.cx = 0x75;
+	LvCol.cx = 240;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 0, (LPARAM)&LvCol);
 
-	LvCol.pszText = L"Location";
+	LvCol.pszText = L"Type";
+	LvCol.cx = 50;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 1, (LPARAM)&LvCol);
 	
 	LVCOLUMN lvHashCol = LvCol;
 	lvHashCol.pszText = L"Hashsum";
-	lvHashCol.cx = 0x100;
+	lvHashCol.cx = 210;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 2, (LPARAM)&lvHashCol);
 
 	if (!loginWindow)
@@ -241,7 +270,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	int wmId, wmEvent;
 	PAINTSTRUCT ps;
 	HDC hdc;
-
+	char sel;
 	switch (message)
 	{
 	case WM_COMMAND:
@@ -251,11 +280,29 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		switch (wmId)
 		{
 		case IDC_START_SIGNIN:
-			setDirPath();															//TO-DO: Credentials check
+			setDirPath();																		//TO-DO: Credentials check
 			UpdateList();
 			ShowWindow(loginWindow, SW_HIDE);
 			ShowWindow(mainWindow, SW_SHOW);
 			UpdateWindow(mainWindow);
+			break;
+		case IDC_MAIN_BTN_REFRESH:
+			UpdateList();
+			break;
+		case IDC_MAIN_COMBOBOX_ARRANGE:
+			switch (HIWORD(wParam))
+			{
+				case CBN_SELCHANGE:
+				int selRow;
+				selRow = SendMessage(arrangeBox, CB_GETCURSEL, 0, 0);
+				if (selRow == 0){
+					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_DETAILS, 0);
+				}
+				else {
+					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_ICON, 0);
+				}
+				break;
+			}
 			break;
 		case IDM_ABOUT:
 			DialogBox(hInst, MAKEINTRESOURCE(IDD_ABOUTBOX), hWnd, About);
