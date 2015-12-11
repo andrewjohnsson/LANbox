@@ -33,13 +33,13 @@ INT_PTR CALLBACK Processor(HWND hDlg, UINT message,
 	WPARAM wParam, LPARAM lParam);
 
 LPWSTR CharToLPWSTR(LPCSTR char_string)
-    {
+{
 	LPWSTR res;
 	DWORD res_len = MultiByteToWideChar(1251, 0, char_string, -1, NULL, 0);
 	res = (LPWSTR)GlobalAlloc(GPTR, (res_len + 1) * sizeof(WCHAR));
 	MultiByteToWideChar(1251, 0, char_string, -1, res, res_len);
 	return res;
-    }
+}
 
 void MD5Hash(BYTE hash[], int sz, char sec[]) {
 	HCRYPTPROV hProv = 0, hHash = 0;
@@ -59,12 +59,12 @@ void MD5Hash(BYTE hash[], int sz, char sec[]) {
 		l++;
 		sec[l] = dig[rgbHash[i] & 0xf];
 		l++;
-        }
+	}
 	for (l = 32; l<strlen(sec); l++)sec[l] = 0;
 
 	CryptDestroyHash(hHash);
 	CryptReleaseContext(hProv, 0);
-    }
+}
 
 LPWSTR MessageBoxFileHashSum(char buffer[]) {
 	char file[600];
@@ -76,9 +76,9 @@ LPWSTR MessageBoxFileHashSum(char buffer[]) {
 	read.seekg(0, ios::beg);
 	char * buf = 0;
 	if ((buf = (char*)malloc(l)) == NULL) {
-		MessageBox(0, CharToLPWSTR("Directorys cannot be summed"), 0, 0);
+		//MessageBox(0, CharToLPWSTR("Directorys cannot be summed"), 0, 0);
 		return 0;
-}
+	}
 	read.read(buf, l);
 	if (read.fail()) {
 		free(buf);
@@ -99,15 +99,16 @@ void UpdateList() {
 	int i = 0;
 	strcpy(path, directory);
 	strcat(path, "*.*");
-
+	MessageBox(NULL, CharToLPWSTR("File name"), CharToLPWSTR(path), MB_OK);
 	WIN32_FIND_DATA data;
 	HANDLE hFile = FindFirstFileA(path, (LPWIN32_FIND_DATAA)&data);
 	SendMessage(hwndList, LB_RESETCONTENT, 0, 0);
 	while (FindNextFile(hFile, &data) != 0)
-{
+	{
 		LvItem.iItem = (WPARAM)-1;
 		LvItem.iSubItem = 0;
 		LvItem.pszText = data.cFileName;
+		//MessageBox(NULL, CharToLPWSTR("File name"), data.cFileName, MB_OK);
 		SendMessage(hwndList, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
 		LvItem.iItem = i;
 		LvItem.pszText = MessageBoxFileHashSum(buffer);
@@ -132,8 +133,11 @@ INT_PTR CALLBACK Processor(HWND hDlg, UINT message,
 {
 	switch (message)
 	{
+	case WM_CREATE:
+		MessageBox(NULL, CharToLPWSTR("Error Opening File"), CharToLPWSTR("andrewjohnsson"), MB_OK);
+		break;
 	case WM_INITDIALOG:
-{
+	{
 		hwndList = GetDlgItem(hDlg, IDC_LIST_FILES);
 
 		LvItem.mask = LVIF_TEXT;
@@ -151,45 +155,45 @@ INT_PTR CALLBACK Processor(HWND hDlg, UINT message,
 		/*
 		for (int i = 0; i < ARRAYSIZE(fileList); i++)
 		{
-			LvItem.iItem = i;
-			LvItem.iSubItem = 0;
-			LvItem.pszText = CharToLPWSTR(fileList[i].name);
-			SendMessage(hwndList, LVM_INSERTITEM, 0, (LPARAM)&LvItem);
+		LvItem.iItem = i;
+		LvItem.iSubItem = 0;
+		LvItem.pszText = CharToLPWSTR(fileList[i].name);
+		SendMessage(hwndList, LVM_INSERTITEM, 0, (LPARAM)&LvItem);
 		}
 
 		for (int i = 0; i < ARRAYSIZE(fileList); i++)
-   {
-			LvItem.iItem = i;
-			LvItem.pszText = CharToLPWSTR(fileList[i].location);
-			LvItem.iSubItem = 1;
-			SendMessage(hwndList, LVM_SETITEM, 0, (LPARAM)&LvItem);
-   }
+		{
+		LvItem.iItem = i;
+		LvItem.pszText = CharToLPWSTR(fileList[i].location);
+		LvItem.iSubItem = 1;
+		SendMessage(hwndList, LVM_SETITEM, 0, (LPARAM)&LvItem);
+		}
 
 		for (int i = 0; i < ARRAYSIZE(fileList); i++)
 		{
-			LvItem.iItem = i;
-			LvItem.pszText = CharToLPWSTR(fileList[i].hash);
-			LvItem.iSubItem = 2;
-			SendMessage(hwndList, LVM_SETITEM, 0, (LPARAM)&LvItem);
+		LvItem.iItem = i;
+		LvItem.pszText = CharToLPWSTR(fileList[i].hash);
+		LvItem.iSubItem = 2;
+		SendMessage(hwndList, LVM_SETITEM, 0, (LPARAM)&LvItem);
 		}*/
 
 		SetFocus(hwndList);
-   return TRUE;
-}
+		return TRUE;
+	}
 
-    case WM_COMMAND:
+	case WM_COMMAND:
 		switch (LOWORD(wParam))
-        {
-			case IDC_BUTTON_CONNECT:
-				MessageBox(0, CharToLPWSTR("Connecting to"), CharToLPWSTR("Info"), MB_OK);
-			case IDC_LIST_FILES:
-            {
-				switch (HIWORD(wParam))
-        {
-    }
-}
-			return TRUE;
-        }
-    }
+		{
+		case IDC_BUTTON_CONNECT:
+			MessageBox(0, CharToLPWSTR("Connecting to"), CharToLPWSTR("Info"), MB_OK);
+		case IDC_LIST_FILES:
+		{
+			switch (HIWORD(wParam))
+			{
+			}
+		}
+		return TRUE;
+		}
+	}
 	return FALSE;
 }
