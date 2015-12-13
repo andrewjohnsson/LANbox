@@ -1,6 +1,3 @@
-// CourseProject.cpp : Defines the entry point for the application.
-//
-
 #include "stdafx.h"
 #include "CourseProject.h"
 #include "md5.h"
@@ -34,15 +31,13 @@ ATOM				MyRegisterClass(HINSTANCE hInstance);
 BOOL				InitInstance(HINSTANCE, int);
 LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
+
+void				addItem(int i, string hash);
 bool				getFiles();
-void				addItem(char* bufs, int i);
-void				sendFiles();
+bool				sendFiles();
 void				updateList();
 
-int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
-	_In_opt_ HINSTANCE hPrevInstance,
-	_In_ LPTSTR    lpCmdLine,
-	_In_ int       nCmdShow)
+int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPTSTR lpCmdLine, _In_ int nCmdShow)
 {
 	UNREFERENCED_PARAMETER(hPrevInstance);
 	UNREFERENCED_PARAMETER(lpCmdLine);
@@ -73,11 +68,6 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	return (int)msg.wParam;
 }
 
-//
-//  FUNCTION: MyRegisterClass()
-//
-//  PURPOSE: Registers the window class.
-//
 ATOM MyRegisterClass(HINSTANCE hInstance)
 {
 	WNDCLASSEX wcex;
@@ -139,6 +129,19 @@ string fullPath(const char* file) {
 	return path;
 }
 
+void addItem(int i, string hash) {
+	LvItem.iItem = i;
+	LvItem.iSubItem = 0;
+	LvItem.pszText = ConvertToLPWSTR(filesList[i]);
+	SendMessage(fileListView, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
+	LvItem.iSubItem = 1;
+	LvItem.pszText = L"Synced";
+	SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
+	LvItem.iSubItem = 2;
+	LvItem.pszText = ConvertToLPWSTR(hash);
+	SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
+}
+
 bool getFiles() {
 	char				path[500], filename[256];
 	char*				file;
@@ -164,22 +167,11 @@ bool getFiles() {
 	return true;
 }
 
-void addItem(char* bufs, int i) {
-	LvItem.iItem = i;
-	LvItem.iSubItem = 0;
-	LvItem.pszText = ConvertToLPWSTR(filesList[i]);
-	SendMessage(fileListView, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
-	LvItem.iSubItem = 1;
-	LvItem.pszText = L"Synced";
-	SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
-	LvItem.iSubItem = 2;
-	LvItem.pszText = ConvertToLPWSTR(md5((string)bufs));
-	SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
-}
-
-void sendFiles() {
+bool sendFiles() {
 	char	filesCount[3], filenameLength[3], fileLength[10];							// TO-DO: fix transmit bug
 	int		count;
+
+	getFiles();
 	send(sock, itoa(filesList.size(), filesCount, 10), 3, 0);
 
 	for (int i = 0; i < filesList.size(); i++) {
@@ -187,8 +179,6 @@ void sendFiles() {
 
 		HANDLE	FileOut;
 		DWORD	m;
-
-		string name = filesList[i];
 
 		int		strLen = filesList[i].length();
 		send(sock, itoa(strLen, filenameLength, 10), 3, 0);
@@ -199,12 +189,14 @@ void sendFiles() {
 		char * bufs = new char[count];
 		
 		ReadFile(FileOut, bufs, count, &m, NULL);
-		addItem(bufs, i);
-		send(sock, itoa(count, fileLength, 10), 10, 0);
-		send(sock, bufs, count, 0);
+		string hash = md5(string(bufs));
+		send(sock, hash.c_str(), 32, 0);
+		addItem(i, hash);
+		delete[] bufs;
 		//recv(sock, buf, sizeof(buf), 0);
 	}
 	closesocket(sock);
+	return true;
 }
 
 void updateList() {
@@ -215,32 +207,31 @@ void updateList() {
 
 bool startNetwork(TCHAR* ip, TCHAR* username)
 {
-	WSADATA			WsaData;
-	sockaddr_in		peer;
-	char			address[32],user[32];								//Conversion of fields data
+	WSADATA	WsaData;
 
+	char	address[32],user[32];					//Conversion of fields data
 	wcstombs(address, ip, wcslen(ip) + 1);
 	wcstombs(user, username, wcslen(username) + 1);
 
 	if (WSAStartup(0x0202, &WsaData) >= 0)
 	{
+		sockaddr_in	peer;
 		peer.sin_family = AF_INET;
 		peer.sin_port = htons(8800);
 		peer.sin_addr.s_addr = inet_addr(address);
 		sock = socket(AF_INET, SOCK_STREAM, 0);
 		
 		if (sock >= 0) {
-			char buf[12], bufRecv[13];
+			char buf[12], bufRecv[14];
 			
 			if (connect(sock, (sockaddr*)&peer, sizeof(peer)) != SOCKET_ERROR) {
 				send(sock, user, sizeof(buf), 0);
 				recv(sock, bufRecv, sizeof(bufRecv), 0);
 				
 				if ((string)bufRecv == "OK") {
-					if (getFiles()) {
-						sendFiles();
+					if (sendFiles()) {
+						return true;
 					}
-					return true;
 				}
 				else { MessageBox(NULL, L"Wrong Credentials! Please Re-Check.", L"Error", NULL); }
 			}
@@ -256,16 +247,6 @@ void killNetwork() {
 	closesocket(sock);
 }
 
-//
-//   FUNCTION: InitInstance(HINSTANCE, int)
-//
-//   PURPOSE: Saves instance handle and creates main window
-//
-//   COMMENTS:
-//
-//        In this function, we save the instance handle in a global variable and
-//        create and display the main program window.
-//
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
 	setDirPath();
@@ -331,16 +312,6 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	return TRUE;
 }
 
-//
-//  FUNCTION: WndProc(HWND, UINT, WPARAM, LPARAM)
-//
-//  PURPOSE:  Processes messages for the main window.
-//
-//  WM_COMMAND	- process the application menu
-//  WM_PAINT	- Paint the main window
-//  WM_DESTROY	- post a quit message and return
-//
-//
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	int wmId, wmEvent;
