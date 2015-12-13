@@ -109,11 +109,6 @@ LPWSTR ConvertToLPWSTR(const std::string& s)
 	return ws;
 }
 
-char* getHash(char* file){													//TO-DO: write hash calculator
-	char* hash = "8dccad143277578943d380a89a954025";
-	return hash;
-}
-
 void updateList() {
 	ListView_DeleteAllItems(fileListView);
 	ListView_Update(fileListView, NULL);
@@ -179,7 +174,7 @@ vector<string> getFiles() {
 	return vect;
 }
 
-void startNetwork(char* ip, char* username, char* password)
+void startNetwork(char* ip, char* username)
 {
 	WSADATA WsaData;
 	sockaddr_in peer;
@@ -201,6 +196,7 @@ void startNetwork(char* ip, char* username, char* password)
 
 				vector<string> files = getFiles();
 				int filesVectorCount = files.size();
+				
 				if ((string)bufRecv == "OK") {
 					send(sock, itoa(filesVectorCount, filesCount, 10), 3, 0);
 					for (int i = 0; i < filesVectorCount; i++) {
@@ -210,7 +206,7 @@ void startNetwork(char* ip, char* username, char* password)
 						int strLen = files[i].length();
 						send(sock, itoa(strLen, filenameLength, 10), 3, 0);
 						send(sock, files[i].c_str(), strLen, 0);
-						FileOut = CreateFile(CharToLPWSTR(directory), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+						FileOut = CreateFile(CharToLPWSTR(fullPath(files[i].c_str()).c_str()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 						count = GetFileSize(FileOut, NULL);
 						char * bufs = new char[count];
 						ReadFile(FileOut, bufs, count, &m, NULL);
@@ -337,12 +333,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		switch (wmId)
 		{
 		case IDC_START_SIGNIN:
-			TCHAR username[32],password[32],ip[32];
+			TCHAR username[32],ip[32];
 			GetWindowText(usernameField, username, 32);
-			GetWindowText(passwordField, password, 32);
 			GetWindowText(serverAddress, ip, 32);
-			//ip, username, password);
-			startNetwork("127.0.0.1", "ada", "ih8winapi");
+			startNetwork("127.0.0.1", "ada");
 			break;
 		case IDC_MAIN_BTN_REFRESH:
 			updateList();
