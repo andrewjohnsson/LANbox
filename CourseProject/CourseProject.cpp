@@ -1,23 +1,31 @@
-// Filebox.cpp : Defines the entry point for the application.
+// CourseProject.cpp : Defines the entry point for the application.
 //
 
 #include "stdafx.h"
 #include "CourseProject.h"
+#include "md5.h"
+#include <vector>
+#include <fstream>
 #include <direct.h>
 #include <commctrl.h>
-#include <fstream>
+#include <windows.h>
+#include "winsock2.h"
+#pragma comment (lib, "Ws2_32.lib")
+
+using namespace std;
 
 #define MAX_LOADSTRING 100
 
 // Global Variables:
-HINSTANCE hInst;																			// current instance
-HWND mainWindow, loginWindow, usernameField, passwordField, arrangeBox, fileListView;
-LV_ITEM LvItem;
-LVCOLUMN LvCol;
-CHAR directory[MAX_PATH];
+HINSTANCE	hInst;														// current instance
+HWND		mainWindow, loginWindow, usernameField, passwordField, 
+			serverAddress, arrangeBox, fileListView;
+LV_ITEM		LvItem;
+LVCOLUMN	LvCol;
+CHAR		directory[MAX_PATH];
 
-TCHAR szTitle[MAX_LOADSTRING];																// The title bar text
-TCHAR szWindowClass[MAX_LOADSTRING];														// the main window class name
+TCHAR		szTitle[MAX_LOADSTRING];									// The title bar text
+TCHAR		szWindowClass[MAX_LOADSTRING];								// the main window class name
 
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
@@ -93,31 +101,68 @@ LPWSTR CharToLPWSTR(LPCSTR char_string)
 	return res;
 }
 
-char* getHash(char* file){														//TO-DO: write hash calculator
+LPWSTR ConvertToLPWSTR(const std::string& s)
+{
+	LPWSTR ws = new wchar_t[s.size() + 1]; // +1 for zero at the end
+	copy(s.begin(), s.end(), ws);
+	ws[s.size()] = 0; // zero at the end
+	return ws;
+}
+
+char* getHash(char* file){													//TO-DO: write hash calculator
 	char* hash = "8dccad143277578943d380a89a954025";
 	return hash;
 }
 
-void UpdateList() {
+void updateList() {
+	ListView_DeleteAllItems(fileListView);
+	ListView_Update(fileListView, NULL);
+}
+
+void setDirPath() {
+	strcpy(directory, getenv("USERPROFILE"));
+	strcat(directory, "\\Documents\\LanBox\\");
+
+	if (_chdir(directory))
+	{
+		if (errno == ENOENT) {
+			if (_mkdir(directory) == 0) { return; }
+			else {
+				MessageBox(NULL, L"Can't make initial dir! Try to launch with administrator rights.", L"Error", NULL);
+				exit(NULL);
+			}
+		}
+	}
+	else { return; }
+}
+
+string fullPath(const char* file) {
+	char path[320];
+	strcpy(path, directory);
+	strcat(path, file);
+	return path;
+}
+
+vector<string> getFiles() {
+	vector<string> vect;
 	char path[500];
-	char buffer[500];
-	int i = 0;
+	char filename[320];
 	strcpy(path, directory);
 	strcat(path, "*.*");
-
-	ListView_DeleteAllItems(fileListView);
+	updateList();
 
 	WIN32_FIND_DATA data;
 	HANDLE hFile = FindFirstFileA(path, (LPWIN32_FIND_DATAA)&data);
 	while (FindNextFile(hFile, &data) != 0)
 	{
-		/*if (!(data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&				//TO-DO: Fix checks bug
-			!(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && 
-			!(data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) &&
-			data.cFileName != L"." && 
-			data.cFileName != L"..") 
-		{*/
-			char* lol = getHash(NULL);
+		if (!(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && !(data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) && data.cFileName != L"." && data.cFileName != L"..")
+		{
+			size_t len = wcstombs(filename, data.cFileName, wcslen(data.cFileName));
+			char* file = new char[len];
+			filename[len] = '\0';
+			if (!(string(filename) == string(".."))) {
+				vect.push_back(string(filename));
+			}
 			LvItem.iItem = 1;
 			LvItem.iSubItem = 0;
 			LvItem.pszText = data.cFileName;
@@ -126,28 +171,68 @@ void UpdateList() {
 			LvItem.pszText = L"123";
 			SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
 			LvItem.iSubItem = 2;
-			LvItem.pszText = CharToLPWSTR(lol);
+			LvItem.pszText = ConvertToLPWSTR(md5((string)file));
 			SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
-		//}
-	}
-	FindClose(hFile);
-}
-
-void setDirPath() {
-	strcpy(directory, getenv("USERPROFILE"));
-	strcat(directory,"\\Documents\\LanBox\\");
-
-	if (_chdir(directory))
-	{
-		if (errno == ENOENT){ 
-			if (_mkdir(directory) == 0) { return; }
-			else {
-				MessageBox(NULL, L"Can't make initial dir! Try to launch with administrator rights.", L"Error", NULL);
-				exit(NULL);
-			} 
 		}
 	}
-	else { return; }
+	FindClose(hFile);
+	return vect;
+}
+
+void startNetwork(char* ip, char* username, char* password)
+{
+	WSADATA WsaData;
+	sockaddr_in peer;
+	int count,sock;
+
+	if (WSAStartup(0x0202, &WsaData) >= 0)
+	{
+		peer.sin_family = AF_INET;
+		peer.sin_port = htons(8800);
+		peer.sin_addr.s_addr = inet_addr(ip);
+		sock = socket(AF_INET, SOCK_STREAM, 0);
+		
+		if (sock >= 0) {
+			char buf[12], bufRecv[13], filesCount[3], filenameLength[3], fileLength[10];
+			
+			if (connect(sock, (sockaddr*)&peer, sizeof(peer)) != SOCKET_ERROR) {
+				send(sock, username, sizeof(buf), 0);
+				recv(sock, bufRecv, sizeof(bufRecv), 0);
+
+				vector<string> files = getFiles();
+				int filesVectorCount = files.size();
+				if ((string)bufRecv == "OK") {
+					send(sock, itoa(filesVectorCount, filesCount, 10), 3, 0);
+					for (int i = 0; i < filesVectorCount; i++) {
+						HANDLE FileOut;
+						DWORD m;
+
+						int strLen = files[i].length();
+						send(sock, itoa(strLen, filenameLength, 10), 3, 0);
+						send(sock, files[i].c_str(), strLen, 0);
+						FileOut = CreateFile(CharToLPWSTR(directory), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+						count = GetFileSize(FileOut, NULL);
+						char * bufs = new char[count];
+						ReadFile(FileOut, bufs, count, &m, NULL);
+						send(sock, itoa(count, fileLength, 10), 10, 0);
+						send(sock, bufs, count, 0);
+					}
+					getFiles();
+					ShowWindow(loginWindow, SW_HIDE);
+					ShowWindow(mainWindow, SW_SHOW);
+					UpdateWindow(mainWindow);
+				}
+				else { MessageBox(NULL, L"Wrong Credentials! Please Re-Check.", L"Error", NULL); }
+			}
+			else {
+				MessageBox(NULL, L"Can't Connect!", L"Error", NULL);
+			}
+
+			closesocket(sock);
+		}
+		else { MessageBox(NULL, L"Can't create socket!", L"Error", NULL); }
+	}
+	else { MessageBox(NULL, L"Can't start WSA!", L"Error", NULL); }
 }
 
 //
@@ -162,6 +247,8 @@ void setDirPath() {
 //
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
+	setDirPath();
+
 	hInst = hInstance; // Store instance handle in our global variable
 
 	loginWindow = CreateWindow(szWindowClass, L"Welcome to LanBox", WS_DLGFRAME | WS_SYSMENU | WS_MINIMIZEBOX,
@@ -174,8 +261,8 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	passwordField = CreateWindow(WC_EDIT , L"password", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
 		5, 35, 305, 20, loginWindow, (HMENU)IDC_START_PASSWORD, hInstance, NULL);
 	
-	HWND serverAddress = CreateWindow(WC_EDIT, L"127.0.0.1", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-		5, 60, 305, 20, loginWindow, (HMENU)IDC_START_PASSWORD, hInstance, NULL);
+	serverAddress = CreateWindow(WC_EDIT, L"127.0.0.1", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+		5, 60, 305, 20, loginWindow, (HMENU)IDC_START_IP, hInstance, NULL);
 
 	HWND loginBtn = CreateWindow(WC_BUTTON, L"Sign In", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
 		125, 95, 65, 25, loginWindow, (HMENU)IDC_START_SIGNIN, hInstance, NULL);
@@ -241,7 +328,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	int wmId, wmEvent;
 	PAINTSTRUCT ps;
 	HDC hdc;
-	char sel;
 	switch (message)
 	{
 	case WM_COMMAND:
@@ -251,18 +337,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		switch (wmId)
 		{
 		case IDC_START_SIGNIN:
-			TCHAR username[32],password[32];
+			TCHAR username[32],password[32],ip[32];
 			GetWindowText(usernameField, username, 32);
 			GetWindowText(passwordField, password, 32);
-			//TO-DO: Credentials check
-			setDirPath();																		
-			UpdateList();
-			ShowWindow(loginWindow, SW_HIDE);
-			ShowWindow(mainWindow, SW_SHOW);
-			UpdateWindow(mainWindow);
+			GetWindowText(serverAddress, ip, 32);
+			//ip, username, password);
+			startNetwork("127.0.0.1", "ada", "ih8winapi");
 			break;
 		case IDC_MAIN_BTN_REFRESH:
-			UpdateList();
+			updateList();
 			break;
 		case IDC_MAIN_COMBOBOX_ARRANGE:
 			switch (HIWORD(wParam))
@@ -301,7 +384,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-// Message handler for about box.
 INT_PTR CALLBACK About(HWND hDlg, UINT message, WPARAM wParam, LPARAM lParam)
 {
 	UNREFERENCED_PARAMETER(lParam);
