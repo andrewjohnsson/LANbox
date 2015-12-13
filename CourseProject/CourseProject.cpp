@@ -17,21 +17,27 @@ using namespace std;
 #define MAX_LOADSTRING 100
 
 // Global Variables:
-HINSTANCE	hInst;														// current instance
-HWND		mainWindow, loginWindow, usernameField, passwordField, 
-			serverAddress, arrangeBox, fileListView;
-LV_ITEM		LvItem;
-LVCOLUMN	LvCol;
-CHAR		directory[MAX_PATH];
+HINSTANCE			hInst;														// current instance
+HWND				mainWindow, loginWindow, usernameField, passwordField, 
+					serverAddress, arrangeBox, fileListView;
+int					sock;														// Socket
+vector<string>		filesList;													// List of all files in dir
+LV_ITEM				LvItem;
+LVCOLUMN			LvCol;
+CHAR				directory[MAX_PATH];
 
-TCHAR		szTitle[MAX_LOADSTRING];									// The title bar text
-TCHAR		szWindowClass[MAX_LOADSTRING];								// the main window class name
+TCHAR				szTitle[MAX_LOADSTRING];									// The title bar text
+TCHAR				szWindowClass[MAX_LOADSTRING];								// the main window class name
 
 // Forward declarations of functions included in this code module:
 ATOM				MyRegisterClass(HINSTANCE hInstance);
 BOOL				InitInstance(HINSTANCE, int);
 LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
+bool				getFiles();
+void				addItem(char* bufs, int i);
+void				sendFiles();
+void				updateList();
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance,
 	_In_opt_ HINSTANCE hPrevInstance,
@@ -85,7 +91,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hInstance = hInstance;
 	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDC_COURSEPROJECT));
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW+2);
+	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW);
 	wcex.lpszMenuName = MAKEINTRESOURCE(IDC_COURSEPROJECT);
 	wcex.lpszClassName = szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
@@ -107,11 +113,6 @@ LPWSTR ConvertToLPWSTR(const std::string& s)
 	copy(s.begin(), s.end(), ws);
 	ws[s.size()] = 0; // zero at the end
 	return ws;
-}
-
-void updateList() {
-	ListView_DeleteAllItems(fileListView);
-	ListView_Update(fileListView, NULL);
 }
 
 void setDirPath() {
@@ -138,97 +139,121 @@ string fullPath(const char* file) {
 	return path;
 }
 
-vector<string> getFiles() {
-	vector<string> vect;
-	char path[500];
-	char filename[320];
+bool getFiles() {
+	char				path[500], filename[256];
+	char*				file;
+
 	strcpy(path, directory);
 	strcat(path, "*.*");
-	updateList();
 
-	WIN32_FIND_DATA data;
-	HANDLE hFile = FindFirstFileA(path, (LPWIN32_FIND_DATAA)&data);
+	WIN32_FIND_DATA		data;
+	HANDLE				hFile = FindFirstFileA(path, (LPWIN32_FIND_DATAA)&data);
 	while (FindNextFile(hFile, &data) != 0)
 	{
-		if (!(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && !(data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) && data.cFileName != L"." && data.cFileName != L"..")
+		if ((data.dwFileAttributes > 16) && !(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && !(data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
 		{
-			size_t len = wcstombs(filename, data.cFileName, wcslen(data.cFileName));
-			char* file = new char[len];
-			filename[len] = '\0';
-			if (!(string(filename) == string(".."))) {
-				vect.push_back(string(filename));
+			if (string(filename) != string("..")) {
+				size_t len = wcstombs(filename, data.cFileName, wcslen(data.cFileName));
+				file = new char[len];
+				filename[len] = '\0';
+				filesList.push_back(string(filename));
 			}
-			LvItem.iItem = 1;
-			LvItem.iSubItem = 0;
-			LvItem.pszText = data.cFileName;
-			SendMessage(fileListView, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
-			LvItem.iSubItem = 1;
-			LvItem.pszText = L"123";
-			SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
-			LvItem.iSubItem = 2;
-			LvItem.pszText = ConvertToLPWSTR(md5((string)file));
-			SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
 		}
 	}
 	FindClose(hFile);
-	return vect;
+	return true;
 }
 
-void startNetwork(char* ip, char* username)
+void addItem(char* bufs, int i) {
+	LvItem.iItem = i;
+	LvItem.iSubItem = 0;
+	LvItem.pszText = ConvertToLPWSTR(filesList[i]);
+	SendMessage(fileListView, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
+	LvItem.iSubItem = 1;
+	LvItem.pszText = L"Synced";
+	SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
+	LvItem.iSubItem = 2;
+	LvItem.pszText = ConvertToLPWSTR(md5((string)bufs));
+	SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
+}
+
+void sendFiles() {
+	char	filesCount[3], filenameLength[3], fileLength[10];							// TO-DO: fix transmit bug
+	int		count;
+	send(sock, itoa(filesList.size(), filesCount, 10), 3, 0);
+
+	for (int i = 0; i < filesList.size(); i++) {
+		char buf[2];
+
+		HANDLE	FileOut;
+		DWORD	m;
+
+		string name = filesList[i];
+
+		int		strLen = filesList[i].length();
+		send(sock, itoa(strLen, filenameLength, 10), 3, 0);
+		send(sock, filesList[i].c_str(), strLen, 0);
+
+		FileOut = CreateFile(CharToLPWSTR(fullPath(filesList[i].c_str()).c_str()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		count = GetFileSize(FileOut, NULL);
+		char * bufs = new char[count];
+		
+		ReadFile(FileOut, bufs, count, &m, NULL);
+		addItem(bufs, i);
+		send(sock, itoa(count, fileLength, 10), 10, 0);
+		send(sock, bufs, count, 0);
+		//recv(sock, buf, sizeof(buf), 0);
+	}
+	closesocket(sock);
+}
+
+void updateList() {
+	SendMessage(fileListView, LVM_DELETEALLITEMS, 0, 0);
+	filesList.clear();
+	ListView_Update(fileListView, NULL);
+}
+
+bool startNetwork(TCHAR* ip, TCHAR* username)
 {
-	WSADATA WsaData;
-	sockaddr_in peer;
-	int count,sock;
+	WSADATA			WsaData;
+	sockaddr_in		peer;
+	char			address[32],user[32];								//Conversion of fields data
+
+	wcstombs(address, ip, wcslen(ip) + 1);
+	wcstombs(user, username, wcslen(username) + 1);
 
 	if (WSAStartup(0x0202, &WsaData) >= 0)
 	{
 		peer.sin_family = AF_INET;
 		peer.sin_port = htons(8800);
-		peer.sin_addr.s_addr = inet_addr(ip);
+		peer.sin_addr.s_addr = inet_addr(address);
 		sock = socket(AF_INET, SOCK_STREAM, 0);
 		
 		if (sock >= 0) {
-			char buf[12], bufRecv[13], filesCount[3], filenameLength[3], fileLength[10];
+			char buf[12], bufRecv[13];
 			
 			if (connect(sock, (sockaddr*)&peer, sizeof(peer)) != SOCKET_ERROR) {
-				send(sock, username, sizeof(buf), 0);
+				send(sock, user, sizeof(buf), 0);
 				recv(sock, bufRecv, sizeof(bufRecv), 0);
-
-				vector<string> files = getFiles();
-				int filesVectorCount = files.size();
 				
 				if ((string)bufRecv == "OK") {
-					send(sock, itoa(filesVectorCount, filesCount, 10), 3, 0);
-					for (int i = 0; i < filesVectorCount; i++) {
-						HANDLE FileOut;
-						DWORD m;
-
-						int strLen = files[i].length();
-						send(sock, itoa(strLen, filenameLength, 10), 3, 0);
-						send(sock, files[i].c_str(), strLen, 0);
-						FileOut = CreateFile(CharToLPWSTR(fullPath(files[i].c_str()).c_str()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-						count = GetFileSize(FileOut, NULL);
-						char * bufs = new char[count];
-						ReadFile(FileOut, bufs, count, &m, NULL);
-						send(sock, itoa(count, fileLength, 10), 10, 0);
-						send(sock, bufs, count, 0);
+					if (getFiles()) {
+						sendFiles();
 					}
-					getFiles();
-					ShowWindow(loginWindow, SW_HIDE);
-					ShowWindow(mainWindow, SW_SHOW);
-					UpdateWindow(mainWindow);
+					return true;
 				}
 				else { MessageBox(NULL, L"Wrong Credentials! Please Re-Check.", L"Error", NULL); }
 			}
-			else {
-				MessageBox(NULL, L"Can't Connect!", L"Error", NULL);
-			}
-
-			closesocket(sock);
+			else { MessageBox(NULL, L"Can't Connect!", L"Error", NULL); }
 		}
 		else { MessageBox(NULL, L"Can't create socket!", L"Error", NULL); }
 	}
 	else { MessageBox(NULL, L"Can't start WSA!", L"Error", NULL); }
+	return false;
+}
+
+void killNetwork() {
+	closesocket(sock);
 }
 
 //
@@ -249,19 +274,16 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 	loginWindow = CreateWindow(szWindowClass, L"Welcome to LanBox", WS_DLGFRAME | WS_SYSMENU | WS_MINIMIZEBOX,
 		(GetSystemMetrics(SM_CXSCREEN)-330)/2, (GetSystemMetrics(SM_CYSCREEN) - 185) / 2, 
-		330, 185, NULL, NULL, hInstance, NULL);
+		330, 155, NULL, NULL, hInstance, NULL);
 
 	usernameField = CreateWindow(WC_EDIT, L"Username", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
 		5, 10, 305, 20, loginWindow, (HMENU)IDC_START_USERNAME, hInstance, NULL);
-
-	passwordField = CreateWindow(WC_EDIT , L"password", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL | ES_PASSWORD,
-		5, 35, 305, 20, loginWindow, (HMENU)IDC_START_PASSWORD, hInstance, NULL);
 	
 	serverAddress = CreateWindow(WC_EDIT, L"127.0.0.1", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-		5, 60, 305, 20, loginWindow, (HMENU)IDC_START_IP, hInstance, NULL);
+		5, 35, 305, 20, loginWindow, (HMENU)IDC_START_IP, hInstance, NULL);
 
 	HWND loginBtn = CreateWindow(WC_BUTTON, L"Sign In", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-		125, 95, 65, 25, loginWindow, (HMENU)IDC_START_SIGNIN, hInstance, NULL);
+		125, 65, 65, 25, loginWindow, (HMENU)IDC_START_SIGNIN, hInstance, NULL);
 
 	mainWindow = CreateWindow(szWindowClass, L"LanBox - Connected", WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_DLGFRAME,
 		(GetSystemMetrics(SM_CXSCREEN) - 640) / 2, (GetSystemMetrics(SM_CYSCREEN) - 360) / 2, 
@@ -292,13 +314,13 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	LvCol.cx = 240;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 0, (LPARAM)&LvCol);
 
-	LvCol.pszText = L"Type";
-	LvCol.cx = 50;
+	LvCol.pszText = L"Status";
+	LvCol.cx = 45;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 1, (LPARAM)&LvCol);
 	
 	LVCOLUMN lvHashCol = LvCol;
 	lvHashCol.pszText = L"Hashsum";
-	lvHashCol.cx = 210;
+	lvHashCol.cx = 215;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 2, (LPARAM)&lvHashCol);
 
 	if (!loginWindow) { return FALSE; }
@@ -336,7 +358,11 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			TCHAR username[32],ip[32];
 			GetWindowText(usernameField, username, 32);
 			GetWindowText(serverAddress, ip, 32);
-			startNetwork("127.0.0.1", "ada");
+			if (startNetwork(ip, username)) {
+				ShowWindow(loginWindow, SW_HIDE);
+				ShowWindow(mainWindow, SW_SHOW);
+				UpdateWindow(mainWindow);
+			}
 			break;
 		case IDC_MAIN_BTN_REFRESH:
 			updateList();
@@ -370,6 +396,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		EndPaint(hWnd, &ps);
 		break;
 	case WM_DESTROY:
+		killNetwork();
 		PostQuitMessage(0);
 		break;
 	default:
