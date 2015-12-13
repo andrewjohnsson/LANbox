@@ -1,13 +1,5 @@
 #include "stdafx.h"
 #include "CourseProject.h"
-#include "md5.h"
-#include <vector>
-#include <fstream>
-#include <direct.h>
-#include <commctrl.h>
-#include <windows.h>
-#include "winsock2.h"
-#pragma comment (lib, "Ws2_32.lib")
 
 using namespace std;
 
@@ -15,6 +7,7 @@ using namespace std;
 
 // Global Variables:
 HINSTANCE			hInst;														// current instance
+HIMAGELIST			hImageList = ImageList_Create(16, 16, ILC_COLOR16, 1, 10);
 HWND				mainWindow, loginWindow, usernameField, passwordField, 
 					serverAddress, arrangeBox, fileListView;
 int					sock;														// Socket
@@ -50,6 +43,11 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	LoadString(hInstance, IDC_COURSEPROJECT, szWindowClass, MAX_LOADSTRING);
 	MyRegisterClass(hInstance);
 
+	INITCOMMONCONTROLSEX icc;
+	icc.dwICC = ICC_ANIMATE_CLASS | ICC_NATIVEFNTCTL_CLASS | ICC_STANDARD_CLASSES | ICC_WIN95_CLASSES;
+	icc.dwSize = sizeof(icc);
+	InitCommonControlsEx(&icc);
+
 	// Perform application initialization:
 	if (!InitInstance(hInstance, nCmdShow)) { return FALSE; }
 
@@ -81,7 +79,7 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	wcex.hInstance = hInstance;
 	wcex.hIcon = LoadIcon(hInstance, MAKEINTRESOURCE(IDC_COURSEPROJECT));
 	wcex.hCursor = LoadCursor(NULL, IDC_ARROW);
-	wcex.hbrBackground = (HBRUSH)(COLOR_WINDOW);
+	wcex.hbrBackground = (HBRUSH)(COLOR_BTNFACE + 1);
 	wcex.lpszMenuName = MAKEINTRESOURCE(IDC_COURSEPROJECT);
 	wcex.lpszClassName = szWindowClass;
 	wcex.hIconSm = LoadIcon(wcex.hInstance, MAKEINTRESOURCE(IDI_SMALL));
@@ -130,11 +128,13 @@ string fullPath(const char* file) {
 }
 
 void addItem(int i, string hash) {
+	HRESULT syncedIcons = SHGetStockIconInfo(SIID_DELETE, SHGSI_SMALLICON, NULL);
 	LvItem.iItem = i;
 	LvItem.iSubItem = 0;
 	LvItem.pszText = ConvertToLPWSTR(filesList[i]);
 	SendMessage(fileListView, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
 	LvItem.iSubItem = 1;
+	//LvItem.iImage = hImageList;
 	LvItem.pszText = L"Synced";
 	SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
 	LvItem.iSubItem = 2;
@@ -193,7 +193,6 @@ bool sendFiles() {
 		send(sock, hash.c_str(), 32, 0);
 		addItem(i, hash);
 		delete[] bufs;
-		//recv(sock, buf, sizeof(buf), 0);
 	}
 	closesocket(sock);
 	return true;
@@ -248,29 +247,29 @@ void killNetwork() {
 }
 
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
-{
+{	
 	setDirPath();
 
 	hInst = hInstance; // Store instance handle in our global variable
 
 	loginWindow = CreateWindow(szWindowClass, L"Welcome to LanBox", WS_DLGFRAME | WS_SYSMENU | WS_MINIMIZEBOX,
 		(GetSystemMetrics(SM_CXSCREEN)-330)/2, (GetSystemMetrics(SM_CYSCREEN) - 185) / 2, 
-		330, 155, NULL, NULL, hInstance, NULL);
+		330, 185, NULL, NULL, hInstance, NULL);
 
-	usernameField = CreateWindow(WC_EDIT, L"Username", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-		5, 10, 305, 20, loginWindow, (HMENU)IDC_START_USERNAME, hInstance, NULL);
+	usernameField = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, L"andrewjohnsson", WS_EX_CLIENTEDGE | WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+		45, 10, 225, 25, loginWindow, (HMENU)IDC_START_USERNAME, hInstance, NULL);
 	
-	serverAddress = CreateWindow(WC_EDIT, L"127.0.0.1", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
-		5, 35, 305, 20, loginWindow, (HMENU)IDC_START_IP, hInstance, NULL);
+	serverAddress = CreateWindowEx(WS_EX_CLIENTEDGE, WC_EDIT, L"127.0.0.1", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+		45, 40, 225, 25, loginWindow, (HMENU)IDC_START_IP, hInstance, NULL);
 
 	HWND loginBtn = CreateWindow(WC_BUTTON, L"Sign In", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-		125, 65, 65, 25, loginWindow, (HMENU)IDC_START_SIGNIN, hInstance, NULL);
+		115, 90, 75, 25, loginWindow, (HMENU)IDC_START_SIGNIN, hInstance, NULL);
 
 	mainWindow = CreateWindow(szWindowClass, L"LanBox - Connected", WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_DLGFRAME,
 		(GetSystemMetrics(SM_CXSCREEN) - 640) / 2, (GetSystemMetrics(SM_CYSCREEN) - 360) / 2, 
 		640, 360, NULL, NULL, hInstance, NULL);
 
-	arrangeBox = CreateWindow(WC_COMBOBOX, NULL,
+	arrangeBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_COMBOBOX,NULL,
 		CBS_DROPDOWN | CBS_HASSTRINGS | WS_CHILD | WS_OVERLAPPED | WS_VISIBLE,
 		510, 5, 110, 75, mainWindow, (HMENU)IDC_MAIN_COMBOBOX_ARRANGE, hInstance, NULL);
 
@@ -287,21 +286,24 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	fileListView = CreateWindow(WC_LISTVIEW, L"", WS_CHILD | LVS_REPORT | LVS_EDITLABELS | WS_VISIBLE,
 		5, 5, 500, 290, mainWindow, (HMENU)IDC_MAIN_FILELIST, hInstance, NULL);
 
-	LvItem.mask = LVIF_TEXT;
+	LvItem.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_STATE;
+	LvItem.stateMask = 0;
+	LvItem.iSubItem = 0;
+	LvItem.state = 0;
 	LvItem.cchTextMax = 256;
 	
 	LvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
 	LvCol.pszText = L"Name";
-	LvCol.cx = 240;
+	LvCol.cx = 230;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 0, (LPARAM)&LvCol);
 
 	LvCol.pszText = L"Status";
-	LvCol.cx = 45;
+	LvCol.cx = 50;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 1, (LPARAM)&LvCol);
 	
 	LVCOLUMN lvHashCol = LvCol;
 	lvHashCol.pszText = L"Hashsum";
-	lvHashCol.cx = 215;
+	lvHashCol.cx = 220;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 2, (LPARAM)&lvHashCol);
 
 	if (!loginWindow) { return FALSE; }
@@ -342,11 +344,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			switch (HIWORD(wParam))
 			{
 				case CBN_SELCHANGE:
-				if (int selRow = SendMessage(arrangeBox, CB_GETCURSEL, 0, 0) == 0){
-					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_DETAILS, 0);
-				}
+				if (int selRow = SendMessage(arrangeBox, CB_GETCURSEL, 0, 0) == 0){ 
+					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_DETAILS, 0); }
 				else {
-					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_ICON, 0);
+					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_ICON, 0); 
 				}
 				break;
 			}
