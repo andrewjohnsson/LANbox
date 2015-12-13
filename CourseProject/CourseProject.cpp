@@ -134,7 +134,7 @@ void addItem(int i, string hash) {
 	LvItem.pszText = ConvertToLPWSTR(filesList[i]);
 	SendMessage(fileListView, LVM_INSERTITEM, (WPARAM)-1, (LPARAM)&LvItem);
 	LvItem.iSubItem = 1;
-	//LvItem.iImage = hImageList;
+	//LvItem.iImage = ExtractAssociatedIcon();
 	LvItem.pszText = L"Synced";
 	SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
 	LvItem.iSubItem = 2;
@@ -201,6 +201,7 @@ bool sendFiles() {
 void updateList() {
 	SendMessage(fileListView, LVM_DELETEALLITEMS, 0, 0);
 	filesList.clear();
+	sendFiles();
 	ListView_Update(fileListView, NULL);
 }
 
@@ -283,9 +284,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	HWND refreshBtn = CreateWindow(WC_BUTTON, L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
 		510, 240, 110, 25, mainWindow, (HMENU)IDC_MAIN_BTN_REFRESH, hInstance, NULL);
 
-	fileListView = CreateWindow(WC_LISTVIEW, L"", WS_CHILD | LVS_REPORT | LVS_EDITLABELS | WS_VISIBLE,
+	fileListView = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTVIEW, L"", WS_CHILD | WS_VISIBLE,
 		5, 5, 500, 290, mainWindow, (HMENU)IDC_MAIN_FILELIST, hInstance, NULL);
 
+	ListView_SetView(fileListView, LVS_REPORT);
+	ListView_SetExtendedListViewStyle(fileListView, LVS_EX_FULLROWSELECT);
 	LvItem.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_STATE;
 	LvItem.stateMask = 0;
 	LvItem.iSubItem = 0;
@@ -294,7 +297,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 	
 	LvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
 	LvCol.pszText = L"Name";
-	LvCol.cx = 230;
+	LvCol.cx = 225;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 0, (LPARAM)&LvCol);
 
 	LvCol.pszText = L"Status";
@@ -345,9 +348,10 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			{
 				case CBN_SELCHANGE:
 				if (int selRow = SendMessage(arrangeBox, CB_GETCURSEL, 0, 0) == 0){ 
-					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_DETAILS, 0); }
+					ListView_SetView(fileListView, LVS_REPORT);
+				}
 				else {
-					SendMessage(arrangeBox, LVM_SETVIEW, LV_VIEW_ICON, 0); 
+					ListView_SetView(fileListView, LVS_ICON);
 				}
 				break;
 			}
