@@ -11,7 +11,7 @@ HIMAGELIST			hImageList = ImageList_Create(16, 16, ILC_COLOR16, 1, 10);
 HWND				mainWindow, loginWindow, usernameField, passwordField,
 serverAddress, arrangeBox, fileListView;
 int					sock;														// Socket
-vector<string>		localFiles, remoteFiles, localNames, remoteNames, hashes, status;
+vector<string>		localFiles, remoteFiles, localNames, remoteNames, toSendNames, hashes, status;
 LV_ITEM				LvItem;
 LVCOLUMN			LvCol;
 CHAR				directory[MAX_PATH];
@@ -31,9 +31,10 @@ bool				getLocalFiles();
 bool				sendLocalNames();
 bool				sendLocalFiles();
 bool				getRemoteFiles();
+bool				getFilesToSend();
 bool				updateList();
-void				setSynced();
 bool				startNetwork(TCHAR* ip, TCHAR* username);
+void				setSyncStatus(int i);
 void				killNetwork();
 
 int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPTSTR lpCmdLine, _In_ int nCmdShow)
@@ -135,9 +136,21 @@ void addItem(int i) {
 	LvItem.iItem = i;
 	LvItem.iSubItem = 0;
 	LvItem.pszText = ConvertToLPWSTR(localNames[i]);
+	setSyncStatus(i);
 	ListView_InsertItem(fileListView, &LvItem);
 	ListView_SetItemText(fileListView, 0, 1, ConvertToLPWSTR(status[i]));
 	ListView_SetItemText(fileListView, 0, 2, ConvertToLPWSTR(hashes[i]));
+}
+
+void setSyncStatus(int i){
+	if (toSendNames.size() > 0){
+		if (find(toSendNames.begin(), toSendNames.end(), localNames[i]) != toSendNames.end()){
+			status[i] = "Sent";
+		}
+		else{
+			status[i] = "Synced";
+		}
+	}
 }
 
 bool getLocalFiles() {
@@ -170,13 +183,7 @@ bool getLocalFiles() {
 				count = GetFileSize(FileOut, NULL);
 				bufs = new char[count];
 
-				while (isRead == FALSE) {
-					if (ReadFile(FileOut, bufs, count, &m, NULL)) {
-						isRead = true;
-						break;
-					}
-					break;
-				}
+				ReadFile(FileOut, bufs, count, &m, NULL);
 
 				hash = md5(string(bufs));
 				hashes.push_back(hash);
@@ -236,66 +243,64 @@ bool getRemoteFiles() {
 		char * bufs = new char[atoi(fileLengthString)];
 		recv(sock, bufs, atoi(fileLengthString), 0);
 
-		while (isWritten == FALSE) {
-			if (WriteFile(FileOut, bufs, atoi(fileLengthString), &m, 0)) {
-				isWritten = true;
-				break;
-			}
-		}
+		WriteFile(FileOut, bufs, atoi(fileLengthString), &m, 0);
+		CloseHandle(FileOut);
 		send(sock, "OK", 2, 0);
 	}
 	return true;
 }
 
+bool getFilesToSend(){
+	char toSendBuffer[3], toSendLength[3];
+	recv(sock, toSendBuffer, 3, 0);
+	int count = atoi(toSendBuffer);
+	for (int i = 0; i < count; i++){
+		int length;
+		recv(sock, toSendLength ,3,0);
+		length = atoi(toSendLength);
+		char* toSendName = new char[length];
+		toSendName[length] = '\0';
+		recv(sock, toSendName,length,0);
+		toSendNames.push_back(toSendName);
+		//delete[] toSendName;
+	}
+	return true;
+}
+
 bool sendLocalFiles() {
-	for (int i = 0; i < localNames.size(); i++) {
+	for (int i = 0; i < toSendNames.size(); i++) {
 		HANDLE	FileOut;
 		DWORD	m;
 		bool	isRead = false;
 
-		FileOut = CreateFile(CharToLPWSTR(fullPath(localNames[i].c_str()).c_str()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
+		FileOut = CreateFile(CharToLPWSTR(fullPath(toSendNames[i].c_str()).c_str()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
 		int count = GetFileSize(FileOut, NULL);
 		char *file = new char[count];
 		char fileLngth[10];
 		memset(fileLngth, '\0', 10);
 
 		send(sock, itoa(count, fileLngth, 10), 10, 0);
-		while (isRead == FALSE) {
-			if (ReadFile(FileOut, file, count, &m, NULL)) {
-				isRead = true;
-				break;
-			}
-			break;
-		}
+		ReadFile(FileOut, file, count, &m, NULL);
 		send(sock, file, count, 0);
-		char okGood[2];
-		memset(okGood, '\0', 2);
-		recv(sock, okGood, 2, 0);
+		CloseHandle(FileOut);
 		delete[] file;
 	}
-	killNetwork();
 	return true;
 }
 
 bool syncFiles() {
-	if (updateList()) {
+	if (getLocalFiles()) {
 		if (sendLocalNames()) {
 			if (getRemoteFiles()) {
-				if (sendLocalFiles()) {
-					killNetwork();
-					return true;
+				if (getFilesToSend()){
+					if (sendLocalFiles()) {
+						updateList();
+						killNetwork();
+						return true;
+					}
 				}
 			}
 		}
-	}
-}
-
-void setSynced() {
-	for (int i = 0; i < localNames.size(); i++) {
-		status[i] = "Synced";
-		LvItem.iSubItem = 1;
-		LvItem.pszText = ConvertToLPWSTR(status[i]);
-		SendMessage(fileListView, LVM_SETITEM, 0, (LPARAM)&LvItem);
 	}
 }
 
@@ -335,7 +340,6 @@ bool startNetwork(TCHAR* ip, TCHAR* username)
 
 				if ((string)bufRecv == "OK") {
 					syncFiles();
-					setSynced();
 					return true;
 				}
 				else { MessageBox(NULL, L"Wrong Credentials! Please Re-Check.", L"Error", NULL); }
@@ -455,7 +459,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case IDC_MAIN_BTN_SYNC:
 			ListView_DeleteAllItems(fileListView);
 			syncFiles();
-			//setSynced();
 			break;
 		case IDC_MAIN_COMBOBOX_ARRANGE:
 			switch (HIWORD(wParam))
