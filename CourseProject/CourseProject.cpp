@@ -205,15 +205,6 @@ void setSyncStatus(int i){
 	}
 }
 
-const wchar_t *GetWC(const char *c)
-{
-	const size_t cSize = strlen(c) + 1;
-	wchar_t* wc = new wchar_t[cSize];
-	mbstowcs(wc, c, cSize);
-
-	return wc;
-}
-
 bool getLocalFiles() {
 	char	path[500], filename[256];
 	int		i = 0;
