@@ -239,7 +239,7 @@ bool getLocalFiles() {
 }
 
 bool sendLocalNames() {
-	char	filesCount[3], filenameLength[3], fileLength[10];							// TO-DO: fix transmit bug
+	char	filesCount[3], filenameLength[3];
 
 	send(sock, itoa(localNames.size(), filesCount, 10), 3, 0);
 
@@ -302,7 +302,6 @@ bool getFilesToSend(){
 		toSendName[length] = '\0';
 		recv(sock, toSendName,length,0);
 		toSendNames.push_back(toSendName);
-		//delete[] toSendName;
 	}
 	return true;
 }
@@ -366,7 +365,7 @@ bool startNetwork(TCHAR* ip, TCHAR* username)
 {
 	WSADATA	WsaData;
 
-	char	address[32], user[32];					//Conversion of fields data
+	char	address[32], user[32];
 	wcstombs(address, ip, wcslen(ip) + 1);
 	wcstombs(user, username, wcslen(username) + 1);
 
