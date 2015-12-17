@@ -8,8 +8,7 @@ using namespace std;
 // Global Variables:
 HINSTANCE			hInst;														// current instance
 HIMAGELIST			hSmallIcon, hNormalIcon;
-HWND				mainWindow, loginWindow, usernameField, passwordField,
-serverAddress, arrangeBox, fileListView;
+HWND				mainWindow, loginWindow, usernameField, passwordField, serverAddress, syncBtn, arrangeBox, fileListView;
 int					sock;														// Socket
 vector<string>		localFiles, remoteFiles, localNames, remoteNames, toSendNames, hashes, status;
 LV_ITEM				LvItem;
@@ -351,7 +350,6 @@ bool syncFiles() {
 					if (sendLocalFiles()) {
 						getLocalFiles();
 						updateList();
-						killNetwork();
 						return true;
 					}
 				}
@@ -433,7 +431,7 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 		(GetSystemMetrics(SM_CXSCREEN) - 640) / 2, (GetSystemMetrics(SM_CYSCREEN) - 360) / 2,
 		640, 365, NULL, NULL, hInstance, NULL);
 
-	HWND syncBtn = CreateWindow(WC_BUTTON, L"Sync", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+	syncBtn = CreateWindow(WC_BUTTON, L"Sync", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
 		5, 275, 110, 25, mainWindow, (HMENU)IDC_MAIN_BTN_SYNC, hInstance, NULL);
 
 	HWND refreshBtn = CreateWindow(WC_BUTTON, L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
@@ -497,11 +495,15 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		case WM_CREATE:
 			break;
 		case IDC_MAIN_BTN_REFRESH:
-			ListView_DeleteAllItems(fileListView);
+			updateList();
+			break;
+		case ID_OPERATIONS_REFRESH:
 			updateList();
 			break;
 		case IDC_MAIN_BTN_SYNC:
-			ListView_DeleteAllItems(fileListView);
+			syncFiles();
+			break;
+		case ID_OPERATIONS_SYNC:
 			syncFiles();
 			break;
 		case ID_OPERATIONS_OPENWORKINGDIR:
@@ -526,7 +528,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		break;
 	case WM_PAINT:
 		hdc = BeginPaint(hWnd, &ps);
-		// TODO: Add any drawing code here...
 		EndPaint(hWnd, &ps);
 		break;
 	case WM_DESTROY:
@@ -534,6 +535,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 		PostQuitMessage(0);
 		break;
 	default:
+		killNetwork();
 		return DefWindowProc(hWnd, message, wParam, lParam);
 	}
 	return 0;
