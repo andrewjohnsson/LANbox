@@ -7,7 +7,7 @@ using namespace std;
 
 // Global Variables:
 HINSTANCE			hInst;														// current instance
-HIMAGELIST			hImageList = ImageList_Create(16, 16, ILC_COLOR16, 1, 10);
+HIMAGELIST			hSmallIcon, hNormalIcon;
 HWND				mainWindow, loginWindow, usernameField, passwordField,
 serverAddress, arrangeBox, fileListView;
 int					sock;														// Socket
@@ -26,6 +26,8 @@ LRESULT CALLBACK	WndProc(HWND, UINT, WPARAM, LPARAM);
 INT_PTR CALLBACK	About(HWND, UINT, WPARAM, LPARAM);
 
 void				addItem(int i);
+bool				setDirPath();
+char*				selectFolder();
 bool				syncFiles();
 bool				getLocalFiles();
 bool				sendLocalNames();
@@ -55,8 +57,15 @@ int APIENTRY _tWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstanc
 	icc.dwSize = sizeof(icc);
 	InitCommonControlsEx(&icc);
 
+	if (!setDirPath()){
+		MessageBox(NULL, L"Can't make initial dir! Try to launch with administrator rights.", L"Error", NULL);
+		return FALSE;
+	}
+
 	// Perform application initialization:
-	if (!InitInstance(hInstance, nCmdShow)) { return FALSE; }
+	if (!InitInstance(hInstance, nCmdShow)) { 
+		return FALSE; 
+	}
 
 	hAccelTable = LoadAccelerators(hInstance, MAKEINTRESOURCE(IDC_COURSEPROJECT));
 
@@ -94,12 +103,12 @@ ATOM MyRegisterClass(HINSTANCE hInstance)
 	return RegisterClassEx(&wcex);
 }
 
-LPWSTR CharToLPWSTR(LPCSTR char_string)
-{
-	DWORD res_len = MultiByteToWideChar(1251, 0, char_string, -1, NULL, 0);
-	LPWSTR res = (LPWSTR)GlobalAlloc(GPTR, (res_len + 1) * sizeof(WCHAR));
-	MultiByteToWideChar(1251, 0, char_string, -1, res, res_len);
-	return res;
+int filesize(string file) {
+	FILE *p_file = NULL;
+	p_file = fopen(file.c_str(), "rb");
+	fseek(p_file, 0, SEEK_END);
+	int size = ftell(p_file);
+	return size;
 }
 
 LPWSTR ConvertToLPWSTR(const std::string& s)
@@ -110,21 +119,23 @@ LPWSTR ConvertToLPWSTR(const std::string& s)
 	return ws;
 }
 
-void setDirPath() {
+bool setDirPath() {
 	strcpy(directory, getenv("USERPROFILE"));
 	strcat(directory, "\\Documents\\LanBox\\");
 
-	if (_chdir(directory))
+	if (chdir(directory) == 0)
 	{
 		if (errno == ENOENT) {
-			if (_mkdir(directory) == 0) { return; }
+			if (mkdir(directory) == 0) { 
+				return true;
+			}
 			else {
-				MessageBox(NULL, L"Can't make initial dir! Try to launch with administrator rights.", L"Error", NULL);
-				exit(NULL);
+				return false;
 			}
 		}
+		return true;
 	}
-	else { return; }
+	return false;
 }
 
 string fullPath(string file) {
@@ -132,8 +143,47 @@ string fullPath(string file) {
 	return s;
 }
 
+void getHash(int i){
+	streampos size;
+	char * memblock;
+	string	hash;
+
+	int count = filesize(fullPath(localNames[i]));
+
+	ifstream myFile(fullPath(localNames[i]), ios::in | ios::binary | ios::ate);
+	if (myFile.is_open())
+	{
+		size = myFile.tellg();
+		memblock = new char[size];
+		myFile.seekg(0, ios::beg);
+		myFile.read(memblock, size);
+		myFile.close();
+	}
+
+	hash = md5(string(memblock));
+	hashes.push_back(hash);
+
+	delete[] memblock;
+}
+
+void setIcon()
+{
+	SHFILEINFO file;
+	ImageList_Destroy(hSmallIcon);
+	hSmallIcon = ImageList_Create(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), ILC_MASK | ILC_COLOR32, localFiles.size(), 1);
+	hNormalIcon = ImageList_Create(GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), ILC_MASK | ILC_COLOR32, localFiles.size(), 1);
+	for (int i = 0; i < localNames.size(); i++){
+		DWORD attrib = GetFileAttributes(ConvertToLPWSTR(fullPath(localNames[i])));
+		SHGetFileInfo(ConvertToLPWSTR(fullPath(localNames[i])), attrib, &file, sizeof(file), SHGFI_ICON | SHGFI_SMALLICON | SHGFI_USEFILEATTRIBUTES);
+		ImageList_AddIcon(hSmallIcon, file.hIcon);
+		DestroyIcon(file.hIcon);
+	}
+	ListView_SetImageList(fileListView, hSmallIcon, LVSIL_SMALL);
+}
+
 void addItem(int i) {
 	LvItem.iItem = i;
+	LvItem.iImage = i;
 	LvItem.iSubItem = 0;
 	LvItem.pszText = ConvertToLPWSTR(localNames[i]);
 	setSyncStatus(i);
@@ -143,14 +193,25 @@ void addItem(int i) {
 }
 
 void setSyncStatus(int i){
-	if (toSendNames.size() > 0){
+	if (status[i] != "Recieved"){
 		if (find(toSendNames.begin(), toSendNames.end(), localNames[i]) != toSendNames.end()){
 			status[i] = "Sent";
 		}
 		else{
-			status[i] = "Synced";
+			if (status[i] == "Local"){
+				status[i] = "Synced";
+			}
 		}
 	}
+}
+
+const wchar_t *GetWC(const char *c)
+{
+	const size_t cSize = strlen(c) + 1;
+	wchar_t* wc = new wchar_t[cSize];
+	mbstowcs(wc, c, cSize);
+
+	return wc;
 }
 
 bool getLocalFiles() {
@@ -162,37 +223,26 @@ bool getLocalFiles() {
 
 	WIN32_FIND_DATA		data;
 	HANDLE				hFile = FindFirstFileA(path, (LPWIN32_FIND_DATAA)&data);
+
+	SHFILEINFO lp;
+	DWORD num;
+	
 	while (FindNextFile(hFile, &data) != 0)
 	{
 		if ((data.dwFileAttributes > 16) && !(data.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) && !(data.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN))
 		{
 			if (string(filename) != string("..")) {
-				HANDLE	FileOut;
-				DWORD	m;
-				bool	isRead = false;
-				char*	bufs;
-				int		count = 0;
-				string	hash;
-
 				size_t	len = wcstombs(filename, data.cFileName, wcslen(data.cFileName));
-
 				filename[len] = '\0';
 				localNames.push_back(string(filename));
 				status.push_back("Local");
-				FileOut = CreateFile(CharToLPWSTR(fullPath(localNames[i]).c_str()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-				count = GetFileSize(FileOut, NULL);
-				bufs = new char[count];
-
-				ReadFile(FileOut, bufs, count, &m, NULL);
-
-				hash = md5(string(bufs));
-				hashes.push_back(hash);
+				getHash(i);
 				addItem(i);
-				delete[] bufs;
 				i++;
 			}
 		}
 	}
+	setIcon();
 	FindClose(hFile);
 	return true;
 }
@@ -227,24 +277,23 @@ bool getRemoteFiles() {
 		fileName[fileNameLength] = '\0';
 		recv(sock, fileName, fileNameLength, 0);
 		remoteNames.push_back(string(fileName));
+		status.push_back("Recieved");
 	}
 
 	for (int i = 0; i < remoteNames.size(); i++) {
-		HANDLE	FileOut;
-		DWORD	m;
-		bool	isWritten = false;
-
 		char fileLengthString[10];
 		memset(fileLengthString, '\0', 10);
-
-		FileOut = CreateFile(CharToLPWSTR(fullPath(remoteNames[i].c_str()).c_str()), GENERIC_WRITE, FILE_SHARE_WRITE, 0, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, 0);
-
 		recv(sock, fileLengthString, 10, 0);
-		char * bufs = new char[atoi(fileLengthString)];
-		recv(sock, bufs, atoi(fileLengthString), 0);
 
-		WriteFile(FileOut, bufs, atoi(fileLengthString), &m, 0);
-		CloseHandle(FileOut);
+		int fileLengthNumber = atoi(fileLengthString);
+
+		char * bufs = new char[fileLengthNumber];
+		recv(sock, bufs, fileLengthNumber, 0);
+		ofstream myFile(fullPath(remoteNames[i]));
+		if (myFile.is_open()) {
+			myFile.write(bufs, fileLengthNumber);
+		}
+		myFile.close();
 		send(sock, "OK", 2, 0);
 	}
 	return true;
@@ -269,31 +318,38 @@ bool getFilesToSend(){
 
 bool sendLocalFiles() {
 	for (int i = 0; i < toSendNames.size(); i++) {
-		HANDLE	FileOut;
-		DWORD	m;
-		bool	isRead = false;
-
-		FileOut = CreateFile(CharToLPWSTR(fullPath(toSendNames[i].c_str()).c_str()), GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0);
-		int count = GetFileSize(FileOut, NULL);
-		char *file = new char[count];
 		char fileLngth[10];
 		memset(fileLngth, '\0', 10);
 
+		streampos size;
+		char * memblock;
+
+		int count = filesize(fullPath(toSendNames[i]));
+
+		ifstream myFile(fullPath(toSendNames[i]), ios::in | ios::binary | ios::ate);
+		if (myFile.is_open())
+		{
+			size = myFile.tellg();
+			memblock = new char[size];
+			myFile.seekg(0, ios::beg);
+			myFile.read(memblock, size);
+			myFile.close();
+		}
+
 		send(sock, itoa(count, fileLngth, 10), 10, 0);
-		ReadFile(FileOut, file, count, &m, NULL);
-		send(sock, file, count, 0);
-		CloseHandle(FileOut);
-		delete[] file;
+		send(sock, memblock, count, 0);
+		delete[] memblock;
 	}
 	return true;
 }
 
 bool syncFiles() {
-	if (getLocalFiles()) {
+	if (updateList()) {
 		if (sendLocalNames()) {
 			if (getRemoteFiles()) {
 				if (getFilesToSend()){
 					if (sendLocalFiles()) {
+						getLocalFiles();
 						updateList();
 						killNetwork();
 						return true;
@@ -358,8 +414,6 @@ void killNetwork() {
 
 BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 {
-	setDirPath();
-
 	hInst = hInstance; // Store instance handle in our global variable
 
 	loginWindow = CreateWindow(szWindowClass, L"Welcome to LanBox", WS_DLGFRAME | WS_SYSMENU | WS_MINIMIZEBOX,
@@ -377,29 +431,20 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 	mainWindow = CreateWindow(szWindowClass, L"LanBox - Connected", WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_DLGFRAME,
 		(GetSystemMetrics(SM_CXSCREEN) - 640) / 2, (GetSystemMetrics(SM_CYSCREEN) - 360) / 2,
-		640, 360, NULL, NULL, hInstance, NULL);
-
-	arrangeBox = CreateWindowEx(WS_EX_CLIENTEDGE, WC_COMBOBOX, NULL,
-		CBS_DROPDOWN | CBS_HASSTRINGS | WS_CHILD | WS_OVERLAPPED | WS_VISIBLE,
-		510, 5, 110, 75, mainWindow, (HMENU)IDC_MAIN_COMBOBOX_ARRANGE, hInstance, NULL);
-
-	SendMessage(arrangeBox, CB_ADDSTRING, 0, (LPARAM)_T("List"));
-	SendMessage(arrangeBox, CB_ADDSTRING, 0, (LPARAM)_T("Icons"));
-	SendMessage(arrangeBox, CB_SETCURSEL, 0, 0);
+		640, 365, NULL, NULL, hInstance, NULL);
 
 	HWND syncBtn = CreateWindow(WC_BUTTON, L"Sync", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-		510, 270, 110, 25, mainWindow, (HMENU)IDC_MAIN_BTN_SYNC, hInstance, NULL);
+		5, 275, 110, 25, mainWindow, (HMENU)IDC_MAIN_BTN_SYNC, hInstance, NULL);
 
 	HWND refreshBtn = CreateWindow(WC_BUTTON, L"Refresh", WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-		510, 240, 110, 25, mainWindow, (HMENU)IDC_MAIN_BTN_REFRESH, hInstance, NULL);
+		510, 275, 110, 25, mainWindow, (HMENU)IDC_MAIN_BTN_REFRESH, hInstance, NULL);
 
-	fileListView = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTVIEW, L"", WS_CHILD | WS_VISIBLE | LVS_EX_FULLROWSELECT,
-		5, 5, 500, 290, mainWindow, (HMENU)IDC_MAIN_FILELIST, hInstance, NULL);
+	fileListView = CreateWindowEx(WS_EX_CLIENTEDGE, WC_LISTVIEW, L"", WS_CHILD | WS_VISIBLE | LVS_REPORT | LVS_EX_FULLROWSELECT,
+		5, 5, 615, 265, mainWindow, (HMENU)IDC_MAIN_FILELIST, hInstance, NULL);
 
-	ListView_SetView(fileListView, LVS_REPORT);
 	ListView_SetExtendedListViewStyle(fileListView, LVS_EX_FULLROWSELECT);
 
-	LvItem.mask = LVIF_TEXT | LVIF_IMAGE | LVIF_STATE;
+	LvItem.mask = LVIF_IMAGE | LVIF_TEXT;
 	LvItem.stateMask = 0;
 	LvItem.iSubItem = 0;
 	LvItem.state = 0;
@@ -407,11 +452,11 @@ BOOL InitInstance(HINSTANCE hInstance, int nCmdShow)
 
 	LvCol.mask = LVCF_TEXT | LVCF_WIDTH | LVCF_SUBITEM;
 	LvCol.pszText = L"Name";
-	LvCol.cx = 220;
+	LvCol.cx = 331;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 0, (LPARAM)&LvCol);
 
 	LvCol.pszText = L"Status";
-	LvCol.cx = 50;
+	LvCol.cx = 60;
 	SendMessage(fileListView, LVM_INSERTCOLUMN, 1, (LPARAM)&LvCol);
 
 	LVCOLUMN lvHashCol = LvCol;
@@ -450,27 +495,23 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			startNetwork(ip, username);
 			break;
 		case WM_CREATE:
-			MessageBox(hWnd, L"Win Computer", L"Ok", MB_OK);
 			break;
 		case IDC_MAIN_BTN_REFRESH:
 			ListView_DeleteAllItems(fileListView);
-			getLocalFiles();
+			updateList();
 			break;
 		case IDC_MAIN_BTN_SYNC:
 			ListView_DeleteAllItems(fileListView);
 			syncFiles();
 			break;
-		case IDC_MAIN_COMBOBOX_ARRANGE:
-			switch (HIWORD(wParam))
+		case ID_OPERATIONS_OPENWORKINGDIR:
 			{
-			case CBN_SELCHANGE:
-				if (int selRow = SendMessage(arrangeBox, CB_GETCURSEL, 0, 0) == 0) {
-					ListView_SetView(fileListView, LVS_REPORT);
-				}
-				else {
-					ListView_SetView(fileListView, LVS_ICON);
-				}
-				break;
+				PIDLIST_ABSOLUTE pidl;
+				SHParseDisplayName(ConvertToLPWSTR(directory), 0, &pidl, 0, 0);
+				ITEMIDLIST idNull = { 0 };
+				LPCITEMIDLIST pidlNull[1] = { &idNull };
+				SHOpenFolderAndSelectItems(pidl, 1, pidlNull, 0);
+				ILFree(pidl);
 			}
 			break;
 		case IDM_ABOUT:

@@ -28,6 +28,7 @@
 #include	<tchar.h>
 #include	"md5.h"
 #include	<Shellapi.h>
+#include	<ShlObj.h>
 #include	<vector>
 #include	<fstream>
 #include	<direct.h>
